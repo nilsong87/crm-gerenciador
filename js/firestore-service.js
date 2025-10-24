@@ -1,0 +1,230 @@
+import { app } from './firebase-config.js';
+import { getFirestore, collection, getDocs, query, where, orderBy, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const db = getFirestore(app);
+
+/**
+ * Fetches all contracts from Firestore without any filters.
+ * This is used to populate the filter dropdowns.
+ * @param {string} role - The user's role.
+ * @returns {Promise<Array>} A promise that resolves to an array of contract objects.
+ */
+async function getAllContractsForFiltering(uid, role) {
+    console.log(`Fetching all contracts for filter population for role: ${role}`);
+    let q;
+    if (role === 'comercial') {
+        q = query(collection(db, 'contracts'), where('userId', '==', uid));
+    } else if (role === 'gerencia') {
+        const userData = await getUserData(uid);
+        if (userData && userData.regiao) {
+            q = query(collection(db, 'contracts'), where('regiao', '==', userData.regiao));
+        } else {
+            // Gerencia without a region, return nothing to avoid errors.
+            return [];
+        }
+    } else {
+        // For other roles like 'diretoria', fetch all.
+        // This might still fail if rules are very strict and don't allow full collection scans.
+        q = query(collection(db, 'contracts'));
+    }
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => doc.data());
+}
+
+
+async function getUserData(uid) {
+    const userRef = doc(db, "users", uid);
+    const userSnap = await getDoc(userRef);
+    if (userSnap.exists()) {
+        return userSnap.data();
+    } else {
+        console.log("No such user!");
+        return null;
+    }
+}
+
+/**
+ * Fetches contracts from Firestore based on role and filters.
+ * @param {string} uid - The user's ID.
+ * @param {string} role - The user's role.
+ * @param {object} filters - The filters to apply.
+ * @returns {Promise<Array>} A promise that resolves to an array of contract objects.
+ */
+async function getContracts(uid, role, filters = {}) {
+    const { status, startDate, endDate, promotora, regiao, cpfContrato, tabela, tipoEmpresa } = filters;
+    let constraints = [];
+
+    console.log(`Fetching data for user ${uid} with role: ${role}`);
+
+    // Role-based constraints
+    if (role === 'comercial') {
+        constraints.push(where('userId', '==', uid));
+    } else if (role === 'gerencia') {
+        const userData = await getUserData(uid);
+        if (userData && userData.regiao) {
+            constraints.push(where('regiao', '==', userData.regiao));
+        }
+    }
+
+    // Filter constraints
+    if (status) {
+        constraints.push(where('status', '==', status));
+    }
+    if (promotora) {
+        constraints.push(where('promotora', '==', promotora));
+    }
+    if (regiao) {
+        constraints.push(where('regiao', '==', regiao));
+    }
+    if (tabela) {
+        constraints.push(where('tabela', '==', tabela));
+    }
+    if (tipoEmpresa) {
+        constraints.push(where('tipoEmpresa', '==', tipoEmpresa));
+    }
+    // NOTE: This filter only searches the clientCpf field, not the contract ID.
+    // For a more robust search, the data should be structured to include a combined search field.
+    if (cpfContrato) {
+        constraints.push(where('clientCpf', '==', cpfContrato));
+    }
+    if (startDate) {
+        constraints.push(where('date', '>=', startDate));
+    }
+    if (endDate) {
+        constraints.push(where('date', '<=', endDate));
+    }
+
+    const q = query(collection(db, 'contracts'), ...constraints, orderBy('date', 'desc'));
+    
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
+/**
+ * Fetches KPI data from Firestore based on role and filters.
+ * @param {string} role - The user's role.
+ * @param {object} filters - The filters to apply.
+ * @returns {Promise<Object>} A promise that resolves to an object with KPI values.
+ */
+async function getKpis(uid, role, filters = {}) {
+    try {
+        const contracts = await getContracts(uid, role, filters);
+        
+        const totalContracts = contracts.length;
+        let totalValue = 0;
+        let activeContracts = 0;
+
+        contracts.forEach(contract => {
+            totalValue += contract.value || 0;
+            if (contract.status === 'pago' || contract.status === 'pendente') {
+                activeContracts++;
+            }
+        });
+
+        const averageTicket = totalContracts > 0 ? totalValue / totalContracts : 0;
+
+        return {
+            totalContracts,
+            activeContracts,
+            averageTicket: averageTicket.toFixed(2),
+            totalValue: totalValue.toFixed(2)
+        };
+    } catch (error) {
+        console.error("Error fetching KPIs: ", error);
+        return {
+            totalContracts: 0,
+            activeContracts: 0,
+            averageTicket: '0.00',
+            totalValue: '0.00'
+        };
+    }
+}
+
+/**
+ * Fetches data for dashboard charts based on role and filters.
+ * @param {string} role - The user's role.
+ * @param {object} filters - The filters to apply.
+ * @returns {Promise<Object>} A promise that resolves to an object with chart data.
+ */
+async function getChartData(uid, role, filters = {}) {
+    try {
+        const contracts = await getContracts(uid, role, filters);
+        
+        const productionData = {}; // { 'YYYY-MM': totalValue }
+        const marketShareData = {}; // { promoterName: count }
+
+        contracts.forEach(contract => {
+            // Production data (monthly)
+            if (contract.date && contract.value) {
+                const date = contract.date.toDate();
+                const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                if (!productionData[monthKey]) {
+                    productionData[monthKey] = 0;
+                }
+                productionData[monthKey] += contract.value;
+            }
+
+            // Market share data (by promoter)
+            if (contract.promoter) {
+                if (!marketShareData[contract.promoter]) {
+                    marketShareData[contract.promoter] = 0;
+                }
+                marketShareData[contract.promoter]++;
+            }
+        });
+
+        const sortedProduction = Object.entries(productionData).sort(([a], [b]) => a.localeCompare(b));
+        const productionLabels = sortedProduction.map(([key]) => key);
+        const productionValues = sortedProduction.map(([, value]) => value);
+
+        const marketShareLabels = Object.keys(marketShareData);
+        const marketShareValues = Object.values(marketShareData);
+
+        return {
+            production: { labels: productionLabels, values: productionValues },
+            marketShare: { labels: marketShareLabels, values: marketShareValues }
+        };
+
+    } catch (error) {
+        console.error("Error fetching chart data: ", error);
+        return {
+            production: { labels: [], values: [] },
+            marketShare: { labels: [], values: [] }
+        };
+    }
+}
+
+/**
+ * Calculates the ranking of promoters based on total contract value.
+ * @param {string} uid - The user's ID.
+ * @param {string} role - The user's role.
+ * @param {object} filters - The filters to apply.
+ * @returns {Promise<Array>} A promise that resolves to a sorted array of promoter ranking objects.
+ */
+async function getPromoterRanking(uid, role, filters = {}) {
+    try {
+        const contracts = await getContracts(uid, role, filters);
+        const ranking = {}; // { promoterName: totalValue }
+
+        contracts.forEach(contract => {
+            if (contract.promotora && contract.value) {
+                if (!ranking[contract.promotora]) {
+                    ranking[contract.promotora] = 0;
+                }
+                ranking[contract.promotora] += contract.value;
+            }
+        });
+
+        const sortedRanking = Object.entries(ranking)
+            .map(([promoter, totalValue]) => ({ promoter, totalValue }))
+            .sort((a, b) => b.totalValue - a.totalValue);
+
+        return sortedRanking;
+
+    } catch (error) {
+        console.error("Error fetching promoter ranking: ", error);
+        return [];
+    }
+}
+
+export { db, getContracts, getKpis, getChartData, getAllContractsForFiltering, getPromoterRanking };
