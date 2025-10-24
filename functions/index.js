@@ -3,66 +3,9 @@ const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const axios = require("axios");
 
-// Whitelist of allowed origins for CORS
-const allowedOrigins = [
-    'http://127.0.0.1:5500', // Exemplo para Live Server VSCode
-    'http://localhost:3000',
-    'https://crm-gerenciador.vercel.app',
-    'https://nilsong87.github.io'
-];
-
-const cors = require("cors")({ 
-    origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps or curl requests)
-        if (!origin) return callback(null, true);
-        if (allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
-        }
-    }
-});
-
 if (admin.apps.length === 0) {
   admin.initializeApp();
 }
-
-exports.verifyRecaptcha = functions.runWith({ secrets: ["RECAPTCHA_SECRET"] }).https.onRequest((req, res) => {
-    cors(req, res, async () => {
-        if (req.method !== 'POST') {
-            return res.status(405).send('Method Not Allowed');
-        }
-
-        try {
-            const { token } = req.body;
-            if (!token) {
-                return res.status(400).json({ success: false, error: 'Token não fornecido.' });
-            }
-
-            // Access the secret from process.env
-            const secretKey = process.env.RECAPTCHA_SECRET;
-            const verificationURL = `https://www.google.com/recaptcha/api/siteverify`;
-
-            const response = await axios.post(verificationURL, null, {
-                params: {
-                    secret: secretKey,
-                    response: token
-                }
-            });
-
-            const responseData = response.data;
-
-            if (responseData.success && responseData.score >= 0.5) {
-                res.status(200).json({ success: true, score: responseData.score });
-            } else {
-                res.status(401).json({ success: false, error: 'A verificação do reCAPTCHA falhou.', details: responseData['error-codes'] });
-            }
-        } catch (error) {
-            console.error('Erro na verificação reCAPTCHA:', error);
-            res.status(500).json({ success: false, error: 'Erro interno ao verificar o reCAPTCHA.' });
-        }
-    });
-});
 
 
 // --- PLACEHOLDER PARA INTEGRAÇÕES DE API ---
