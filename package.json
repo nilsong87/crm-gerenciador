@@ -4,7 +4,6 @@
   "description": "Gerenciador Executivo de Administração de Vendas",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
     "seed": "node js/seed-database.js",
     "set-role": "node js/set-role.js"
   },
