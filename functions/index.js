@@ -27,7 +27,7 @@ if (admin.apps.length === 0) {
   admin.initializeApp();
 }
 
-exports.verifyRecaptcha = functions.https.onRequest((req, res) => {
+exports.verifyRecaptcha = functions.runWith({ secrets: ["RECAPTCHA_SECRET"] }).https.onRequest((req, res) => {
     cors(req, res, async () => {
         if (req.method !== 'POST') {
             return res.status(405).send('Method Not Allowed');
@@ -39,7 +39,8 @@ exports.verifyRecaptcha = functions.https.onRequest((req, res) => {
                 return res.status(400).json({ success: false, error: 'Token não fornecido.' });
             }
 
-            const secretKey = functions.config().recaptcha.secret;
+            // Access the secret from process.env
+            const secretKey = process.env.RECAPTCHA_SECRET;
             const verificationURL = `https://www.google.com/recaptcha/api/siteverify`;
 
             const response = await axios.post(verificationURL, null, {
