@@ -2,43 +2,65 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const axios = require("axios");
-const cors = require("cors")({origin: true});
+
+// Whitelist of allowed origins for CORS
+const allowedOrigins = [
+    'http://127.0.0.1:5500', // Exemplo para Live Server VSCode
+    'http://localhost:3000',
+    'https://crm-gerenciador.vercel.app',
+    'https://nilsong87.github.io'
+];
+
+const cors = require("cors")({ 
+    origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    }
+});
 
 if (admin.apps.length === 0) {
   admin.initializeApp();
 }
 
-exports.verifyRecaptcha = functions.https.onCall(async (data, context) => {
-  try {
-    const { token } = data;
-    if (!token) {
-      throw new functions.https.HttpsError('invalid-argument', 'Token não fornecido.');
-    }
+exports.verifyRecaptcha = functions.https.onRequest((req, res) => {
+    cors(req, res, async () => {
+        if (req.method !== 'POST') {
+            return res.status(405).send('Method Not Allowed');
+        }
 
-    const secretKey = functions.config().recaptcha.secret;
-    const verificationURL = `https://www.google.com/recaptcha/api/siteverify`;
+        try {
+            const { token } = req.body;
+            if (!token) {
+                return res.status(400).json({ success: false, error: 'Token não fornecido.' });
+            }
 
-    const response = await axios.post(verificationURL, null, {
-        params: {
-            secret: secretKey,
-            response: token
+            const secretKey = functions.config().recaptcha.secret;
+            const verificationURL = `https://www.google.com/recaptcha/api/siteverify`;
+
+            const response = await axios.post(verificationURL, null, {
+                params: {
+                    secret: secretKey,
+                    response: token
+                }
+            });
+
+            const responseData = response.data;
+
+            if (responseData.success && responseData.score >= 0.5) {
+                res.status(200).json({ success: true, score: responseData.score });
+            } else {
+                res.status(401).json({ success: false, error: 'A verificação do reCAPTCHA falhou.', details: responseData['error-codes'] });
+            }
+        } catch (error) {
+            console.error('Erro na verificação reCAPTCHA:', error);
+            res.status(500).json({ success: false, error: 'Erro interno ao verificar o reCAPTCHA.' });
         }
     });
-    
-    const responseData = response.data;
-
-    if (responseData.success && responseData.score >= 0.5) {
-      return { success: true, score: responseData.score };
-    } else {
-      throw new functions.https.HttpsError('unauthenticated', 'A verificação do reCAPTCHA falhou.', responseData['error-codes']);
-    }
-  } catch (error) {
-    console.error('Erro na verificação reCAPTCHA:', error);
-    if (error instanceof functions.https.HttpsError) {
-        throw error;
-    }
-    throw new functions.https.HttpsError('internal', 'Erro interno ao verificar o reCAPTCHA.');
-  }
 });
 
 

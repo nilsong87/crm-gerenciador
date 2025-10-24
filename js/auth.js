@@ -3,17 +3,14 @@ import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/fir
 
 const auth = getAuth(app);
 
-import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
-
-
-const functions = getFunctions(app);
-const verifyRecaptcha = httpsCallable(functions, 'verifyRecaptcha');
+// A URL da sua função HTTP onRequest
+const verifyRecaptchaUrl = 'https://us-central1-crm-gerenciamento.cloudfunctions.net/verifyRecaptcha';
 
 document.addEventListener('DOMContentLoaded', function() {
     const loginForm = document.getElementById('login-form');
     if (!loginForm) return;
 
-    loginForm.addEventListener('submit', async (e) => {
+    loginForm.addEventListener('submit', (e) => {
         e.preventDefault();
 
         const email = loginForm['email'].value;
@@ -22,9 +19,17 @@ document.addEventListener('DOMContentLoaded', function() {
         grecaptcha.ready(function() {
             grecaptcha.execute('6LdWgvQrAAAAAGHOwheVoS9z2XeFv6Md22ji4WTG', {action: 'login'}).then(async function(token) {
                 try {
-                    const result = await verifyRecaptcha({ token });
+                    const response = await fetch(verifyRecaptchaUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ token })
+                    });
 
-                    if (result.data.success) {
+                    const result = await response.json();
+
+                    if (response.ok && result.success) {
                         // Verificação do reCAPTCHA bem-sucedida, prossiga com o login
                         signInWithEmailAndPassword(auth, email, password)
                             .then(userCredential => {
@@ -37,7 +42,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             });
                     } else {
                         // Falha na verificação do reCAPTCHA
-                        console.error('reCAPTCHA verification failed:', result.data.error);
+                        console.error('reCAPTCHA verification failed:', result.error);
                         alert('Falha na verificação de segurança. Tente novamente.');
                     }
                 } catch (error) {
