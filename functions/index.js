@@ -81,53 +81,7 @@ exports.syncInternalCrmData = functions.https.onCall(async (data, context) => {
     }
 });
 
-const cors = require('cors')({ origin: true });
 
-/**
- * Verifica o token do reCAPTCHA v2 no backend.
- */
-exports.verifyRecaptcha = functions.https.onRequest((req, res) => {
-    cors(req, res, async () => {
-        // Assegura que é um método POST
-        if (req.method !== 'POST') {
-            return res.status(405).send('Method Not Allowed');
-        }
-
-        const token = req.body.token;
-        const secret = functions.config().recaptcha.secret;
-
-        if (!secret) {
-            functions.logger.error('A chave secreta do reCAPTCHA não está configurada.');
-            return res.status(500).json({ success: false, error: 'Internal server error.' });
-        }
-
-        if (!token) {
-            return res.status(400).json({ success: false, error: 'Token not provided.' });
-        }
-
-        try {
-            const response = await axios.post(
-                `https://www.google.com/recaptcha/api/siteverify?secret=${secret}&response=${token}`,
-                {},
-                {
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8'
-                    }
-                }
-            );
-
-            if (response.data.success) {
-                return res.status(200).json({ success: true });
-            } else {
-                functions.logger.warn('Falha na verificação do reCAPTCHA.', { errors: response.data['error-codes'] });
-                return res.status(400).json({ success: false, error: 'reCAPTCHA verification failed.', details: response.data['error-codes'] });
-            }
-        } catch (error) {
-            functions.logger.error('Erro na verificação do reCAPTCHA:', error);
-            return res.status(500).json({ success: false, error: 'Error communicating with reCAPTCHA service.' });
-        }
-    });
-});
 
 /**
  * Gets a list of all users.

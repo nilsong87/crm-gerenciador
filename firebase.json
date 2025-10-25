@@ -8,10 +8,6 @@
     ],
     "rewrites": [
       {
-        "source": "/verifyRecaptcha",
-        "function": "verifyRecaptcha"
-      },
-      {
         "source": "/syncWorkbankData",
         "function": "syncWorkbankData"
       },
