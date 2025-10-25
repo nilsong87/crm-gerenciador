@@ -25,6 +25,7 @@ export function initializeReports(uid, role) {
     document.getElementById('filter-button').addEventListener('click', generateReport);
     document.getElementById('export-pdf').addEventListener('click', exportPDF);
     document.getElementById('export-excel').addEventListener('click', exportExcel);
+    document.getElementById('export-csv').addEventListener('click', exportCSV);
 }
 
 async function populateFilterOptions(role) {
@@ -171,4 +172,41 @@ function exportExcel() {
     ];
 
     XLSX.writeFile(workbook, "relatorio_contratos.xlsx");
+}
+
+function exportCSV() {
+    if (contractsData.length === 0) {
+        alert("Não há dados para exportar. Por favor, gere um relatório primeiro.");
+        return;
+    }
+
+    const headers = ['Contrato', 'Cliente', 'CPF', 'Status', 'Data', 'Valor', 'Promotora', 'Região'];
+    const csvRows = [];
+    csvRows.push(headers.join(','));
+
+    for (const contract of contractsData) {
+        const values = [
+            contract.id,
+            `"${contract.clientName || 'N/A'}"`,
+            `"${contract.clientCpf || 'N/A'}"`,
+            contract.status || 'N/A',
+            contract.date?.toDate ? contract.date.toDate().toLocaleDateString('pt-BR') : 'N/A',
+            contract.value || 0,
+            `"${contract.promotora || 'N/A'}"`,
+            `"${contract.regiao || 'N/A'}"`
+        ];
+        csvRows.push(values.join(','));
+    }
+
+    const csvString = csvRows.join('\n');
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'relatorio_contratos.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }

@@ -1,4 +1,26 @@
 {
+  "hosting": {
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/verifyRecaptcha",
+        "function": "verifyRecaptcha"
+      },
+      {
+        "source": "/syncWorkbankData",
+        "function": "syncWorkbankData"
+      },
+      {
+        "source": "/syncInternalCrmData",
+        "function": "syncInternalCrmData"
+      }
+    ]
+  },
   "functions": {
     "source": "functions"
   }

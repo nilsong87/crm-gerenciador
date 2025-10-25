@@ -12,7 +12,7 @@ const db = getFirestore(app);
 async function getAllContractsForFiltering(uid, role) {
     console.log(`Fetching all contracts for filter population for role: ${role}`);
     let q;
-    if (role === 'comercial') {
+    if (role === 'comercial' || role === 'operacional') {
         q = query(collection(db, 'contracts'), where('userId', '==', uid));
     } else if (role === 'gerencia') {
         const userData = await getUserData(uid);
@@ -23,8 +23,7 @@ async function getAllContractsForFiltering(uid, role) {
             return [];
         }
     } else {
-        // For other roles like 'diretoria', fetch all.
-        // This might still fail if rules are very strict and don't allow full collection scans.
+        // For other roles like 'diretoria' and 'superintendencia', fetch all.
         q = query(collection(db, 'contracts'));
     }
     const snapshot = await getDocs(q);
@@ -57,7 +56,7 @@ async function getContracts(uid, role, filters = {}) {
     console.log(`Fetching data for user ${uid} with role: ${role}`);
 
     // Role-based constraints
-    if (role === 'comercial') {
+    if (role === 'comercial' || role === 'operacional') {
         constraints.push(where('userId', '==', uid));
     } else if (role === 'gerencia') {
         const userData = await getUserData(uid);
@@ -65,6 +64,7 @@ async function getContracts(uid, role, filters = {}) {
             constraints.push(where('regiao', '==', userData.regiao));
         }
     }
+    // For 'diretoria' and 'superintendencia', no constraints are added, so they see all contracts.
 
     // Filter constraints
     if (status) {

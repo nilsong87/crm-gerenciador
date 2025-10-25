@@ -80,3 +80,38 @@ exports.syncInternalCrmData = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('internal', 'Erro ao buscar dados do CRM interno.');
     }
 });
+
+/**
+ * Verifica o token do reCAPTCHA v2 no backend.
+ */
+exports.verifyRecaptcha = functions.https.onCall(async (data, context) => {
+    const token = data.token;
+    // A secret key deve ser armazenada de forma segura, ex: Firebase environment variables
+    // firebase functions:config:set recaptcha.secret="SUA_SECRET_KEY"
+    const secret = functions.config().recaptcha.secret;
+
+    if (!secret) {
+        throw new functions.https.HttpsError('internal', 'A chave secreta do reCAPTCHA não está configurada.');
+    }
+
+    try {
+        const response = await axios.post(
+            `https://www.google.com/recaptcha/api/siteverify?secret=${secret}&response=${token}`,
+            {},
+            {
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded; charset=utf-8"
+                }
+            }
+        );
+
+        if (response.data.success) {
+            return { success: true };
+        } else {
+            throw new functions.https.HttpsError('invalid-argument', 'Falha na verificação do reCAPTCHA.', response.data['error-codes']);
+        }
+    } catch (error) {
+        functions.logger.error("Erro na verificação do reCAPTCHA:", error);
+        throw new functions.https.HttpsError('internal', 'Erro ao comunicar com o serviço reCAPTCHA.');
+    }
+});
