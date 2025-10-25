@@ -1,10 +1,7 @@
 import { app } from './firebase-config.js';
 import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 
 const auth = getAuth(app);
-const functions = getFunctions(app);
-const verifyRecaptcha = httpsCallable(functions, 'verifyRecaptcha');
 
 document.addEventListener('DOMContentLoaded', function() {
     const loginForm = document.getElementById('login-form');
