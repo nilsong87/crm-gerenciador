@@ -9,6 +9,11 @@ let datepicker;
 let userUID;
 let userRole = 'comercial'; // Default role
 
+// Chart instances
+let productionChartInstance = null;
+let marketShareChartInstance = null;
+let statusChartInstance = null;
+
 document.addEventListener('DOMContentLoaded', function() {
     console.log("Dashboard script loaded and executing.");
 
@@ -34,7 +39,15 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('cpf-contrato-filter').value = '';
             document.getElementById('tabela-filter').value = '';
             document.getElementById('empresa-filter').value = '';
+            document.getElementById('market-share-filter').value = 'promotora';
             datepicker.clearSelection();
+            refreshDashboard(userUID, userRole);
+        });
+    }
+
+    const marketShareFilter = document.getElementById('market-share-filter');
+    if (marketShareFilter) {
+        marketShareFilter.addEventListener('change', () => {
             refreshDashboard(userUID, userRole);
         });
     }
@@ -90,8 +103,9 @@ function getFilters() {
     const tipoEmpresa = document.getElementById('empresa-filter').value;
     const startDate = datepicker.getStartDate()?.toJSDate();
     const endDate = datepicker.getEndDate()?.toJSDate();
+    const marketShareDimension = document.getElementById('market-share-filter').value;
 
-    return { status, promotora, regiao, cpfContrato, tabela, tipoEmpresa, startDate, endDate };
+    return { status, promotora, regiao, cpfContrato, tabela, tipoEmpresa, startDate, endDate, marketShareDimension };
 }
 
 async function populateFilterOptions(uid, role) {
@@ -142,7 +156,7 @@ export async function refreshDashboard(uid, role) {
     await Promise.all([
         populateKpis(uid, role, filters),
         populateContractsTable(uid, role, filters),
-        initializeCharts(uid, role, filters),
+        initializeCharts(uid, role, filters, filters.marketShareDimension),
         populatePromoterRanking(uid, role, filters)
     ]);
 }
@@ -175,22 +189,22 @@ async function populatePromoterRanking(uid, role, filters) {
             <span class="badge bg-primary rounded-pill">R$ ${item.totalValue.toFixed(2)}</span>
         `;
         rankingList.appendChild(li);
-    });}
+    });
+}
 
 function updateUIVisibility(role) {
-    const usersLink = document.querySelector('a[href="#usuários"]');
-    const goalsLink = document.querySelector('a[href="#metas"]');
+    const usersLink = document.querySelector('a[href="#"]'); // More specific selector might be needed
+    const goalsLink = document.querySelector('a[href="metas.html"]');
     const adminSection = document.getElementById('admin-section');
 
     // Default to hidden
     if(usersLink) usersLink.parentElement.style.display = 'none';
-    if(goalsLink) goalsLink.parentElement.style.display = 'none';
+    if(goalsLink) goalsLink.parentElement.style.display = 'block'; // Should be visible now
     if(adminSection) adminSection.style.display = 'none';
 
     // Show based on role
     if (role === 'diretoria' || role === 'superintendencia') {
         if(usersLink) usersLink.parentElement.style.display = 'block';
-        if(goalsLink) goalsLink.parentElement.style.display = 'block';
         if(adminSection) adminSection.style.display = 'block';
     }
     
@@ -310,19 +324,24 @@ function getStatusColor(status) {
     }
 }
 
-let productionChartInstance = null;
-let marketShareChartInstance = null;
-
-async function initializeCharts(uid, role, filters) {
-    const chartData = await getChartData(uid, role, filters);
-
-    if (productionChartInstance) {
-        productionChartInstance.destroy();
+function getStatusChartColors(status) {
+    switch (status) {
+        case 'pago': return '#198754'; // Bootstrap 'success'
+        case 'pendente': return '#ffc107'; // Bootstrap 'warning'
+        case 'cancelado': return '#dc3545'; // Bootstrap 'danger'
+        default: return '#6c757d'; // Bootstrap 'secondary'
     }
-    if (marketShareChartInstance) {
-        marketShareChartInstance.destroy();
-    }
+}
 
+async function initializeCharts(uid, role, filters, marketShareDimension) {
+    const chartData = await getChartData(uid, role, filters, marketShareDimension);
+
+    // Destroy existing charts
+    if (productionChartInstance) productionChartInstance.destroy();
+    if (marketShareChartInstance) marketShareChartInstance.destroy();
+    if (statusChartInstance) statusChartInstance.destroy();
+
+    // Production Chart
     const ctxProd = document.getElementById('productionChart');
     if (ctxProd) {
         productionChartInstance = new Chart(ctxProd, {
@@ -341,18 +360,51 @@ async function initializeCharts(uid, role, filters) {
         });
     }
 
+    // Market Share Chart
     const ctxMarket = document.getElementById('marketShareChart');
     if (ctxMarket) {
+        const dimensionText = $(`#market-share-filter option[value='${marketShareDimension}']`).text();
         marketShareChartInstance = new Chart(ctxMarket, {
             type: 'pie',
             data: {
                 labels: chartData.marketShare.labels,
                 datasets: [{
-                    label: 'Market Share por Promotor',
+                    label: `Market Share ${dimensionText}`,
                     data: chartData.marketShare.values,
-                    backgroundColor: ['#2962ff', '#00c853', '#ffab00', '#d500f9', '#ff3d00'],
+                    backgroundColor: ['#2962ff', '#00c853', '#ffab00', '#d500f9', '#ff3d00', '#00b8d4', '#6200ea'],
                     borderWidth: 1
                 }]
+            },
+            options: {
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                    }
+                }
+            }
+        });
+    }
+
+    // Status Chart
+    const ctxStatus = document.getElementById('statusChart');
+    if (ctxStatus) {
+        statusChartInstance = new Chart(ctxStatus, {
+            type: 'doughnut',
+            data: {
+                labels: chartData.status.labels,
+                datasets: [{
+                    label: 'Status dos Contratos',
+                    data: chartData.status.values,
+                    backgroundColor: chartData.status.labels.map(label => getStatusChartColors(label)),
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                    }
+                }
             }
         });
     }

@@ -142,35 +142,37 @@ async function getKpis(uid, role, filters = {}) {
 
 /**
  * Fetches data for dashboard charts based on role and filters.
+ * @param {string} uid - The user's ID.
  * @param {string} role - The user's role.
  * @param {object} filters - The filters to apply.
+ * @param {string} marketShareDimension - The dimension for the market share chart.
  * @returns {Promise<Object>} A promise that resolves to an object with chart data.
  */
-async function getChartData(uid, role, filters = {}) {
+async function getChartData(uid, role, filters = {}, marketShareDimension = 'promotora') {
     try {
         const contracts = await getContracts(uid, role, filters);
         
         const productionData = {}; // { 'YYYY-MM': totalValue }
-        const marketShareData = {}; // { promoterName: count }
+        const marketShareData = {}; // { dimensionValue: count }
+        const statusData = {}; // { status: count }
 
         contracts.forEach(contract => {
             // Production data (monthly)
             if (contract.date && contract.value) {
                 const date = contract.date.toDate();
                 const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-                if (!productionData[monthKey]) {
-                    productionData[monthKey] = 0;
-                }
-                productionData[monthKey] += contract.value;
+                productionData[monthKey] = (productionData[monthKey] || 0) + contract.value;
             }
 
-            // Market share data (by promoter)
-            if (contract.promoter) {
-                if (!marketShareData[contract.promoter]) {
-                    marketShareData[contract.promoter] = 0;
-                }
-                marketShareData[contract.promoter]++;
+            // Market share data (dynamic dimension)
+            const dimensionValue = contract[marketShareDimension];
+            if (dimensionValue) {
+                marketShareData[dimensionValue] = (marketShareData[dimensionValue] || 0) + 1;
             }
+
+            // Status data
+            const statusValue = contract.status || 'desconhecido';
+            statusData[statusValue] = (statusData[statusValue] || 0) + 1;
         });
 
         const sortedProduction = Object.entries(productionData).sort(([a], [b]) => a.localeCompare(b));
@@ -180,16 +182,21 @@ async function getChartData(uid, role, filters = {}) {
         const marketShareLabels = Object.keys(marketShareData);
         const marketShareValues = Object.values(marketShareData);
 
+        const statusLabels = Object.keys(statusData);
+        const statusValues = Object.values(statusData);
+
         return {
             production: { labels: productionLabels, values: productionValues },
-            marketShare: { labels: marketShareLabels, values: marketShareValues }
+            marketShare: { labels: marketShareLabels, values: marketShareValues },
+            status: { labels: statusLabels, values: statusValues }
         };
 
     } catch (error) {
         console.error("Error fetching chart data: ", error);
         return {
             production: { labels: [], values: [] },
-            marketShare: { labels: [], values: [] }
+            marketShare: { labels: [], values: [] },
+            status: { labels: [], values: [] }
         };
     }
 }
@@ -227,4 +234,41 @@ async function getPromoterRanking(uid, role, filters = {}) {
     }
 }
 
-export { db, getContracts, getKpis, getChartData, getAllContractsForFiltering, getPromoterRanking };
+/**
+ * Fetches goals from Firestore based on user role.
+ * @param {string} uid - The user's ID.
+ * @param {string} role - The user's role.
+ * @returns {Promise<Array>} A promise that resolves to an array of goal objects.
+ */
+async function getGoals(uid, role) {
+    try {
+        let q;
+        if (role === 'comercial' || role === 'operacional') {
+            q = query(collection(db, 'goals'), where('userId', '==', uid));
+        } else if (role === 'gerencia') {
+            const userData = await getUserData(uid);
+            if (userData && userData.regiao) {
+                q = query(collection(db, 'goals'), where('regiao', '==', userData.regiao));
+            } else {
+                // Gerencia without a region, fetch their own goals only
+                q = query(collection(db, 'goals'), where('userId', '==', uid));
+            }
+        } else {
+            // Diretoria and Superintendencia see all goals
+            q = query(collection(db, 'goals'), orderBy('period', 'desc'));
+        }
+
+        const snapshot = await getDocs(q);
+        if (snapshot.empty) {
+            console.log("No goals found for this user/role.");
+            return [];
+        }
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    } catch (error) {
+        console.error("Error fetching goals: ", error);
+        return []; // Return empty array on error
+    }
+}
+
+export { db, getContracts, getKpis, getChartData, getAllContractsForFiltering, getPromoterRanking, getGoals };
