@@ -115,3 +115,58 @@ exports.verifyRecaptcha = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('internal', 'Erro ao comunicar com o serviço reCAPTCHA.');
     }
 });
+
+/**
+ * Gets a list of all users.
+ * Only accessible by 'diretoria' and 'superintendencia' roles.
+ */
+exports.getUsers = functions.https.onCall(async (data, context) => {
+    // Check for permission
+    if (context.auth.token.role !== 'diretoria' && context.auth.token.role !== 'superintendencia') {
+        throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem listar usuários.');
+    }
+
+    try {
+        const userRecords = await admin.auth().listUsers(1000); // Max 1000 users per page
+        const users = userRecords.users.map((user) => ({
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName,
+            customClaims: user.customClaims,
+            disabled: user.disabled,
+        }));
+        return users;
+    } catch (error) {
+        functions.logger.error("Erro ao listar usuários:", error);
+        throw new functions.https.HttpsError('internal', 'Erro ao listar usuários.');
+    }
+});
+
+/**
+ * Sets a custom role for a user.
+ * Only accessible by 'diretoria' and 'superintendencia' roles.
+ */
+exports.setUserRole = functions.https.onCall(async (data, context) => {
+    // Check for permission
+    if (context.auth.token.role !== 'diretoria' && context.auth.token.role !== 'superintendencia') {
+        throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem alterar perfis.');
+    }
+
+    const { uid, role } = data;
+    const validRoles = ['diretoria', 'superintendencia', 'gerencia', 'comercial', 'operacional'];
+
+    if (!uid || !role) {
+        throw new functions.https.HttpsError('invalid-argument', 'O UID do usuário e o perfil são obrigatórios.');
+    }
+    if (!validRoles.includes(role)) {
+        throw new functions.https.HttpsError('invalid-argument', `O perfil '${role}' é inválido.`);
+    }
+
+    try {
+        await admin.auth().setCustomUserClaims(uid, { role: role });
+        return { success: true, message: `Perfil do usuário ${uid} atualizado para '${role}'.` };
+    } catch (error) {
+        functions.logger.error("Erro ao definir perfil do usuário:", error);
+        throw new functions.https.HttpsError('internal', 'Erro ao definir perfil do usuário.');
+    }
+});

@@ -1,5 +1,6 @@
 import { app } from './firebase-config.js';
 import { getFirestore, collection, getDocs, query, where, orderBy, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 
 const db = getFirestore(app);
 
@@ -271,4 +272,20 @@ async function getGoals(uid, role) {
     }
 }
 
-export { db, getContracts, getKpis, getChartData, getAllContractsForFiltering, getPromoterRanking, getGoals };
+/**
+ * Fetches a list of all users by calling a cloud function.
+ * @returns {Promise<Array>} A promise that resolves to an array of user objects.
+ */
+async function getUsers() {
+    try {
+        const functions = getFunctions();
+        const getUsersFn = httpsCallable(functions, 'getUsers');
+        const result = await getUsersFn();
+        return result.data;
+    } catch (error) {
+        console.error("Error fetching users:", error);
+        return null;
+    }
+}
+
+export { db, getContracts, getKpis, getChartData, getAllContractsForFiltering, getPromoterRanking, getGoals, getUsers };
