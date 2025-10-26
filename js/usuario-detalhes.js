@@ -1,7 +1,7 @@
 console.log("usuario-detalhes.js script loaded");
 
 import { app } from './firebase-config.js';
-import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getAuth, onAuthStateChanged, getIdTokenResult } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getUserData, getContractsForUser, getKpisForUser, getChartDataForUser } from './firestore-service.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -9,24 +9,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
     onAuthStateChanged(auth, (user) => {
         if (user) {
-            // Get selected user's UID from URL
-            const urlParams = new URLSearchParams(window.location.search);
-            const selectedUserId = urlParams.get('uid');
+            getIdTokenResult(user).then((idTokenResult) => {
+                const loggedInUserRole = idTokenResult.claims.role || 'comercial';
+                const urlParams = new URLSearchParams(window.location.search);
+                const selectedUserId = urlParams.get('uid');
 
-            if (selectedUserId) {
-                initializeUserDetailsPage(user, selectedUserId);
-            } else {
-                console.error('No user UID found in URL');
-                // Redirect or show error
-            }
+                if (selectedUserId) {
+                    initializeUserDetailsPage(user, loggedInUserRole, selectedUserId);
+                } else {
+                    console.error('No user UID found in URL');
+                }
+            });
         } else {
-            // User is signed out, redirect to login
             window.location.href = 'index.html';
         }
     });
 });
 
-async function initializeUserDetailsPage(loggedInUser, selectedUserId) {
+async function initializeUserDetailsPage(loggedInUser, loggedInUserRole, selectedUserId) {
     // 1. Fetch user data
     const userData = await getUserData(selectedUserId);
     if (userData) {
@@ -34,7 +34,7 @@ async function initializeUserDetailsPage(loggedInUser, selectedUserId) {
     }
 
     // 2. Fetch user's contracts (respecting logged-in user's permissions)
-    const contracts = await getContractsForUser(loggedInUser.uid, loggedInUser.customClaims.role, selectedUserId);
+    const contracts = await getContractsForUser(loggedInUser.uid, loggedInUserRole, selectedUserId);
     if (contracts) {
         displayContractsTable(contracts);
 
