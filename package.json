@@ -1,0 +1,16 @@
+{
+  "name": "crm-app-v2",
+  "version": "1.0.0",
+  "description": "Gerenciador Executivo de Administração de Vendas",
+  "main": "server.js",
+  "scripts": {
+    "seed": "node js/seed-database.js",
+    "set-role": "node js/set-role.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.2",
+    "firebase-admin": "^12.1.1"
+  }  
+}

@@ -1,0 +1,45 @@
+{
+  "rules": {
+    // Grant full access to Diretoria at the root.
+    // Note: This gives them access to everything, overriding deeper rules.
+    ".read": "auth.token.role === 'diretoria'",
+    ".write": "auth.token.role === 'diretoria'",
+
+    "dashboard": {
+      ".indexOn": ["region", "state", "city", "userId"],
+      "$docId": {
+        ".read": "(auth.token.role === 'superintendencia' && data.child('region').val() === auth.token.region) || (auth.token.role === 'gerencia_regional' && data.child('state').val() === auth.token.state) || (auth.token.role === 'comercial' && data.child('city').val() === auth.token.city) || (auth.token.role === 'operacional' && data.child('userId').val() === auth.uid)"
+      }
+    },
+
+    "usuarios": {
+      ".indexOn": ["region", "state", "city"],
+      "$userId": {
+        ".read": "auth.uid === $userId || (auth.token.role === 'superintendencia' && data.child('region').val() === auth.token.region) || (auth.token.role === 'gerencia_regional' && data.child('state').val() === auth.token.state) || (auth.token.role === 'comercial' && data.child('city').val() === auth.token.city)",
+        ".write": "auth.uid === $userId"
+      }
+    },
+
+    "contratos": {
+      ".indexOn": ["region", "state", "city", "userId"],
+      "$docId": {
+        ".read": "(auth.token.role === 'superintendencia' && data.child('region').val() === auth.token.region) || (auth.token.role === 'gerencia_regional' && data.child('state').val() === auth.token.state) || (auth.token.role === 'comercial' && data.child('city').val() === auth.token.city) || (auth.token.role === 'operacional' && data.child('userId').val() === auth.uid)",
+        ".write": "auth.token.role === 'comercial' || auth.token.role === 'operacional'"
+      }
+    },
+
+    "relatorios": {
+      ".indexOn": ["region", "state", "city", "userId"],
+      "$docId": {
+        ".read": "(auth.token.role === 'superintendencia' && data.child('region').val() === auth.token.region) || (auth.token.role === 'gerencia_regional' && data.child('state').val() === auth.token.state) || (auth.token.role === 'comercial' && data.child('city').val() === auth.token.city) || (auth.token.role === 'operacional' && data.child('userId').val() === auth.uid)"
+      }
+    },
+
+    "metas": {
+      ".indexOn": ["region", "state", "city", "userId"],
+      "$docId": {
+        ".read": "(auth.token.role === 'superintendencia' && data.child('region').val() === auth.token.region) || (auth.token.role === 'gerencia_regional' && data.child('state').val() === auth.token.state) || (auth.token.role === 'comercial' && data.child('city').val() === auth.token.city) || (auth.token.role === 'operacional' && data.child('userId').val() === auth.uid)"
+      }
+    }
+  }
+}

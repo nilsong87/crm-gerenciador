@@ -1,0 +1,59 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Função auxiliar para verificar a propriedade com base na função do usuário e na hierarquia dos dados.
+    function isOwner(role, data) {
+      return (role == 'superintendencia' && data.region == request.auth.token.region) ||
+             (role == 'gerencia_regional' && data.state == request.auth.token.state) ||
+             (role == 'comercial' && data.city == request.auth.token.city) ||
+             (role == 'operacional' && data.userId == request.auth.uid);
+    }
+
+    // A função 'diretoria' tem acesso total de leitura e escrita em todas as coleções.
+    // Para outras funções, permissões específicas são verificadas abaixo.
+
+    match /dashboard/{docId} {
+      allow read: if request.auth.token.role == 'diretoria' || isOwner(request.auth.token.role, resource.data);
+      // Apenas 'diretoria' pode escrever na coleção de dashboard.
+      allow write: if request.auth.token.role == 'diretoria';
+    }
+
+    match /users/{userId} {
+      // Usuários podem ler seus próprios dados. 'diretoria' e proprietários também podem ler dados de usuários.
+      allow get: if request.auth.token.role == 'diretoria' || request.auth.uid == userId || isOwner(request.auth.token.role, resource.data);
+      // 'diretoria' e proprietários podem listar usuários.
+      allow list: if request.auth.token.role == 'diretoria' || isOwner(request.auth.token.role, resource.data);
+      // Usuários podem atualizar seus próprios dados. 'diretoria' também pode atualizar qualquer usuário.
+      allow update: if request.auth.token.role == 'diretoria' || request.auth.uid == userId;
+      // Apenas 'diretoria' pode criar ou deletar usuários.
+      allow create, delete: if request.auth.token.role == 'diretoria';
+    }
+
+    match /contratos/{docId} {
+      // 'diretoria' e proprietários podem ler contratos.
+      allow read: if request.auth.token.role == 'diretoria' || isOwner(request.auth.token.role, resource.data);
+      // 'diretoria', 'comercial', e 'operacional' podem criar contratos.
+      allow create: if request.auth.token.role == 'diretoria' || request.auth.token.role == 'comercial' || request.auth.token.role == 'operacional';
+      // 'diretoria' pode atualizar qualquer campo. 'operacional' pode apenas atualizar campos específicos para validação.
+      allow update: if request.auth.token.role == 'diretoria' || (request.auth.token.role == 'operacional' && request.resource.data.keys().hasOnly(['validated', 'validation_notes']));
+      // Apenas 'diretoria' pode deletar contratos.
+      allow delete: if request.auth.token.role == 'diretoria';
+    }
+
+    match /relatorios/{docId} {
+      // 'diretoria' e proprietários podem ler relatórios.
+      allow read: if request.auth.token.role == 'diretoria' || isOwner(request.auth.token.role, resource.data);
+      // Apenas 'diretoria' pode escrever na coleção de relatórios.
+      allow write: if request.auth.token.role == 'diretoria';
+    }
+
+    match /metas/{docId} {
+      // 'diretoria' e proprietários podem ler metas.
+      allow read: if request.auth.token.role == 'diretoria' || isOwner(request.auth.token.role, resource.data);
+      // Apenas 'diretoria' pode escrever na coleção de metas.
+      allow write: if request.auth.token.role == 'diretoria';
+    }
+  }
+}

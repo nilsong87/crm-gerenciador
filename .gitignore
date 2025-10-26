@@ -1,0 +1,6 @@
+# Firebase
+firebase-admin-key.json
+firebase-debug.log
+
+# Dependencies
+node_modules
