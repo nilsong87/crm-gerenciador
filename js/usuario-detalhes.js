@@ -1,6 +1,6 @@
 import { app } from './firebase-config.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { getUserData, getContractsForUser, getKpisForUser } from './firestore-service.js';
+import { getUserData, getContractsForUser, getKpisForUser, getChartDataForUser } from './firestore-service.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     const auth = getAuth(app);
@@ -35,12 +35,14 @@ async function initializeUserDetailsPage(loggedInUser, selectedUserId) {
     const contracts = await getContractsForUser(loggedInUser.uid, loggedInUser.customClaims.role, selectedUserId);
     if (contracts) {
         displayContractsTable(contracts);
-    }
 
-    // 3. Fetch and display KPIs
-    const kpis = await getKpisForUser(contracts);
-    if (kpis) {
+        // 3. Get and display KPIs
+        const kpis = getKpisForUser(contracts);
         displayKpis(kpis);
+
+        // 4. Get and display charts
+        const chartData = getChartDataForUser(contracts);
+        displayCharts(chartData);
     }
 }
 
@@ -88,6 +90,56 @@ function displayKpis(kpis) {
             </div>
         </div>
     `;
+}
+
+function displayCharts(chartData) {
+    // Production Chart
+    const productionCtx = document.getElementById('productionChart').getContext('2d');
+    new Chart(productionCtx, {
+        type: 'line',
+        data: {
+            labels: chartData.production.labels,
+            datasets: [{
+                label: 'Produção Mensal',
+                data: chartData.production.values,
+                borderColor: 'rgba(75, 192, 192, 1)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                fill: true,
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+
+    // Status Chart
+    const statusCtx = document.getElementById('statusChart').getContext('2d');
+    new Chart(statusCtx, {
+        type: 'doughnut',
+        data: {
+            labels: chartData.status.labels,
+            datasets: [{
+                label: 'Status dos Contratos',
+                data: chartData.status.values,
+                backgroundColor: [
+                    'rgba(255, 99, 132, 0.7)',
+                    'rgba(54, 162, 235, 0.7)',
+                    'rgba(255, 206, 86, 0.7)',
+                    'rgba(75, 192, 192, 0.7)',
+                    'rgba(153, 102, 255, 0.7)',
+                    'rgba(255, 159, 64, 0.7)'
+                ],
+            }]
+        },
+        options: {
+            responsive: true,
+        }
+    });
 }
 
 function displayContractsTable(contracts) {

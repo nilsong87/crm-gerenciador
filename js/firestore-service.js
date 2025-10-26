@@ -347,4 +347,41 @@ function getKpisForUser(contracts) {
     };
 }
 
-export { db, getContracts, getKpis, getChartData, getAllContractsForFiltering, getPromoterRanking, getGoals, getUsers, getUserData, getContractsForUser, getKpisForUser };
+function getChartDataForUser(contracts) {
+    if (!contracts) {
+        return {
+            production: { labels: [], values: [] },
+            status: { labels: [], values: [] }
+        };
+    }
+
+    const productionData = {}; // { 'YYYY-MM': totalValue }
+    const statusData = {}; // { status: count }
+
+    contracts.forEach(contract => {
+        // Production data (monthly)
+        if (contract.date && contract.value) {
+            const date = contract.date.toDate();
+            const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            productionData[monthKey] = (productionData[monthKey] || 0) + contract.value;
+        }
+
+        // Status data
+        const statusValue = contract.status || 'desconhecido';
+        statusData[statusValue] = (statusData[statusValue] || 0) + 1;
+    });
+
+    const sortedProduction = Object.entries(productionData).sort(([a], [b]) => a.localeCompare(b));
+    const productionLabels = sortedProduction.map(([key]) => key);
+    const productionValues = sortedProduction.map(([, value]) => value);
+
+    const statusLabels = Object.keys(statusData);
+    const statusValues = Object.values(statusData);
+
+    return {
+        production: { labels: productionLabels, values: productionValues },
+        status: { labels: statusLabels, values: statusValues }
+    };
+}
+
+export { db, getContracts, getKpis, getChartData, getAllContractsForFiltering, getPromoterRanking, getGoals, getUsers, getUserData, getContractsForUser, getKpisForUser, getChartDataForUser };

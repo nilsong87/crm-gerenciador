@@ -71,6 +71,9 @@
             <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
                 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
                     <h1 class="h2">Detalhes do Usuário</h1>
+                    <a href="usuarios.html" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left"></i> Voltar para Usuários
+                    </a>
                 </div>
 
                 <!-- User Info -->
@@ -92,6 +95,26 @@
                     <!-- KPI cards will be inserted here by JavaScript -->
                 </div>
 
+                <!-- Charts -->
+                <div class="row mt-4">
+                    <div class="col-lg-6">
+                        <div class="card shadow-sm mb-4">
+                            <div class="card-header">Produção por Período</div>
+                            <div class="card-body">
+                                <canvas id="productionChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="card shadow-sm mb-4">
+                            <div class="card-header">Status de Contratos</div>
+                            <div class="card-body">
+                                <canvas id="statusChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Data Table -->
                 <div class="card shadow-sm mt-4">
                     <div class="card-header">Contratos do Usuário</div>
@@ -110,6 +133,8 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.7.0.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- DataTables JS -->
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
