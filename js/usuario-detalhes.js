@@ -1,3 +1,5 @@
+console.log("usuario-detalhes.js script loaded");
+
 import { app } from './firebase-config.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getUserData, getContractsForUser, getKpisForUser, getChartDataForUser } from './firestore-service.js';
