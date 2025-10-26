@@ -1,5 +1,5 @@
 import { app } from './firebase-config.js';
-import { getFirestore, collection, getDocs, query, where, orderBy, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, collection, getDocs, query, where, orderBy, doc, getDoc, addDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 
 const db = getFirestore(app);
@@ -235,40 +235,34 @@ async function getPromoterRanking(uid, role, filters = {}) {
     }
 }
 
-/**
- * Fetches goals from Firestore based on user role.
- * @param {string} uid - The user's ID.
- * @param {string} role - The user's role.
- * @returns {Promise<Array>} A promise that resolves to an array of goal objects.
- */
 async function getGoals(uid, role) {
+    const userData = await getUserData(uid);
+    if (!userData) {
+        console.error("Could not get user data for goals.");
+        return [];
+    }
+
+    let constraints = [];
+
+    if (role === 'operacional') {
+        constraints.push(where('userId', '==', uid));
+    } else if (role === 'comercial') {
+        constraints.push(where('city', '==', userData.city));
+    } else if (role === 'gerente_regional' || role === 'gerencia') { // Assuming gerencia is gerente_regional
+        constraints.push(where('state', '==', userData.state));
+    } else if (role === 'superintendencia') {
+        constraints.push(where('region', '==', userData.region));
+    }
+    // For 'diretoria', no constraints are added, so they see all goals.
+
+    const q = query(collection(db, 'goals'), ...constraints);
+    
     try {
-        let q;
-        if (role === 'comercial' || role === 'operacional') {
-            q = query(collection(db, 'goals'), where('userId', '==', uid));
-        } else if (role === 'gerencia') {
-            const userData = await getUserData(uid);
-            if (userData && userData.regiao) {
-                q = query(collection(db, 'goals'), where('regiao', '==', userData.regiao));
-            } else {
-                // Gerencia without a region, fetch their own goals only
-                q = query(collection(db, 'goals'), where('userId', '==', uid));
-            }
-        } else {
-            // Diretoria and Superintendencia see all goals
-            q = query(collection(db, 'goals'), orderBy('period', 'desc'));
-        }
-
         const snapshot = await getDocs(q);
-        if (snapshot.empty) {
-            console.log("No goals found for this user/role.");
-            return [];
-        }
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
     } catch (error) {
-        console.error("Error fetching goals: ", error);
-        return []; // Return empty array on error
+        console.error("Error fetching goals:", error);
+        return [];
     }
 }
 
@@ -393,4 +387,37 @@ function getChartDataForUser(contracts) {
     };
 }
 
-export { db, getContracts, getKpis, getChartData, getAllContractsForFiltering, getPromoterRanking, getGoals, getUsers, getUserData, getContractsForUser, getKpisForUser, getChartDataForUser };
+async function addGoal(goalData) {
+    try {
+        const goalsCollection = collection(db, 'goals');
+        const docRef = await addDoc(goalsCollection, goalData);
+        return docRef.id;
+    } catch (error) {
+        console.error("Error adding goal: ", error);
+        return null;
+    }
+}
+
+async function updateGoal(goalId, goalData) {
+    try {
+        const goalRef = doc(db, 'goals', goalId);
+        await updateDoc(goalRef, goalData);
+        return true;
+    } catch (error) {
+        console.error("Error updating goal: ", error);
+        return false;
+    }
+}
+
+async function deleteGoal(goalId) {
+    try {
+        const goalRef = doc(db, 'goals', goalId);
+        await deleteDoc(goalRef);
+        return true;
+    } catch (error) {
+        console.error("Error deleting goal: ", error);
+        return false;
+    }
+}
+
+export { db, getContracts, getKpis, getChartData, getAllContractsForFiltering, getPromoterRanking, getGoals, getUsers, getUserData, getContractsForUser, getKpisForUser, getChartDataForUser, addGoal, updateGoal, deleteGoal };

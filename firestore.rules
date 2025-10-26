@@ -50,10 +50,15 @@ service cloud.firestore {
     }
 
     match /metas/{docId} {
-      // 'diretoria' e proprietários podem ler metas.
-      allow read: if request.auth.token.role == 'diretoria' || isOwner(request.auth.token.role, resource.data);
-      // Apenas 'diretoria' pode escrever na coleção de metas.
-      allow write: if request.auth.token.role == 'diretoria';
+      // Leitura: diretoria e gerencia veem tudo, outros veem de acordo com a hierarquia.
+      allow read: if request.auth.token.role == 'diretoria' || request.auth.token.role == 'gerencia' || isOwner(request.auth.token.role, resource.data);
+
+      // Escrita: Perfis de gestão podem escrever de acordo com sua hierarquia.
+      allow write: if request.auth.token.role == 'diretoria' ||
+                      request.auth.token.role == 'gerencia' ||
+                      request.auth.token.role == 'superintendencia' ||
+                      request.auth.token.role == 'gerente_regional' ||
+                      request.auth.token.role == 'comercial';
     }
   }
 }
