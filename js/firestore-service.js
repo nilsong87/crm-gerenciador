@@ -294,26 +294,35 @@ async function getContractsForUser(loggedInUserUid, loggedInUserRole, selectedUs
     // Add the main filter for the selected user
     constraints.push(where('userId', '==', selectedUserId));
 
-    // Add role-based constraints for the logged-in user
-    if (loggedInUserRole === 'comercial' || loggedInUserRole === 'operacional') {
-        if (loggedInUserUid !== selectedUserId) {
-            console.warn("Permission warning: A user with role 'comercial' or 'operacional' is trying to view another user's contracts.");
-            return []; // Return empty array to prevent unauthorized access on the client-side
-        }
-    } else if (loggedInUserRole === 'gerencia') {
-        const loggedInUserData = await getUserData(loggedInUserUid);
-        if (loggedInUserData && loggedInUserData.regiao) {
-            constraints.push(where('regiao', '==', loggedInUserData.regiao));
-        } else {
-            return []; // Gerencia without a region can't see any contracts
-        }
+    // Get the logged-in user's data to get their region, state, etc.
+    const loggedInUserData = await getUserData(loggedInUserUid);
+    if (!loggedInUserData) {
+        console.error("Could not get logged-in user's data.");
+        return [];
     }
-    // For 'diretoria' and 'superintendencia', no additional constraints are added, so they can see all contracts for the selected user.
+
+    // Add role-based constraints for the logged-in user
+    if (loggedInUserRole === 'comercial') {
+        constraints.push(where('city', '==', loggedInUserData.city));
+    } else if (loggedInUserRole === 'gerencia_regional' || loggedInUserRole === 'gerencia') { // Handle both role names
+        constraints.push(where('state', '==', loggedInUserData.state));
+    } else if (loggedInUserRole === 'superintendencia') {
+        constraints.push(where('region', '==', loggedInUserData.region));
+    }
+    // For 'diretoria', no additional constraints are needed.
+    // 'operacional' can only see their own data, which is already handled by the initial 'userId' filter.
 
     const q = query(collection(db, 'contracts'), ...constraints, orderBy('date', 'desc'));
     
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    try {
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (error) {
+        console.error("Error fetching contracts for user:", error);
+        // This is where the permission error will likely be caught.
+        // We can provide a more user-friendly message here if needed.
+        return [];
+    }
 }
 
 function getKpisForUser(contracts) {
