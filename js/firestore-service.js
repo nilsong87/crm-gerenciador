@@ -288,4 +288,63 @@ async function getUsers() {
     }
 }
 
-export { db, getContracts, getKpis, getChartData, getAllContractsForFiltering, getPromoterRanking, getGoals, getUsers };
+async function getContractsForUser(loggedInUserUid, loggedInUserRole, selectedUserId) {
+    let constraints = [];
+
+    // Add the main filter for the selected user
+    constraints.push(where('userId', '==', selectedUserId));
+
+    // Add role-based constraints for the logged-in user
+    if (loggedInUserRole === 'comercial' || loggedInUserRole === 'operacional') {
+        if (loggedInUserUid !== selectedUserId) {
+            console.warn("Permission warning: A user with role 'comercial' or 'operacional' is trying to view another user's contracts.");
+            return []; // Return empty array to prevent unauthorized access on the client-side
+        }
+    } else if (loggedInUserRole === 'gerencia') {
+        const loggedInUserData = await getUserData(loggedInUserUid);
+        if (loggedInUserData && loggedInUserData.regiao) {
+            constraints.push(where('regiao', '==', loggedInUserData.regiao));
+        } else {
+            return []; // Gerencia without a region can't see any contracts
+        }
+    }
+    // For 'diretoria' and 'superintendencia', no additional constraints are added, so they can see all contracts for the selected user.
+
+    const q = query(collection(db, 'contracts'), ...constraints, orderBy('date', 'desc'));
+    
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
+function getKpisForUser(contracts) {
+    if (!contracts) {
+        return {
+            totalContracts: 0,
+            activeContracts: 0,
+            averageTicket: '0.00',
+            totalValue: '0.00'
+        };
+    }
+
+    const totalContracts = contracts.length;
+    let totalValue = 0;
+    let activeContracts = 0;
+
+    contracts.forEach(contract => {
+        totalValue += contract.value || 0;
+        if (contract.status === 'pago' || contract.status === 'pendente') {
+            activeContracts++;
+        }
+    });
+
+    const averageTicket = totalContracts > 0 ? totalValue / totalContracts : 0;
+
+    return {
+        totalContracts,
+        activeContracts,
+        averageTicket: averageTicket.toFixed(2),
+        totalValue: totalValue.toFixed(2)
+    };
+}
+
+export { db, getContracts, getKpis, getChartData, getAllContractsForFiltering, getPromoterRanking, getGoals, getUsers, getUserData, getContractsForUser, getKpisForUser };

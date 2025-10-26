@@ -48,7 +48,7 @@ async function loadUsers() {
 
     const tableData = users.map(user => {
         return [
-            user.nome || 'Não informado',
+            `<a href="usuario-detalhes.html?uid=${user.uid}">${user.nome || 'Não informado'}</a>`,
             user.email,
             user.role || 'N/D',
             `<button class="btn btn-sm btn-primary edit-btn" data-id="${user.uid}">Editar</button>`
