@@ -420,4 +420,44 @@ async function deleteGoal(goalId) {
     }
 }
 
-export { db, getContracts, getKpis, getChartData, getAllContractsForFiltering, getPromoterRanking, getGoals, getUsers, getUserData, getContractsForUser, getKpisForUser, getChartDataForUser, addGoal, updateGoal, deleteGoal };
+async function getAssignableUsers(uid, role) {
+    const userData = await getUserData(uid);
+    if (!userData) {
+        console.error("Could not get user data for assignable users.");
+        return [];
+    }
+
+    let constraints = [];
+
+    if (role === 'comercial') {
+        constraints.push(where('role', '==', 'operacional'));
+        constraints.push(where('city', '==', userData.city));
+    } else if (role === 'gerente_regional' || role === 'gerencia') {
+        constraints.push(where('role', '==', 'comercial'));
+        constraints.push(where('state', '==', userData.state));
+    } else if (role === 'superintendencia') {
+        constraints.push(where('role', '==', 'gerente_regional'));
+        constraints.push(where('region', '==', userData.region));
+    } else if (role === 'diretoria') {
+        // No constraints, fetch all users
+    } else {
+        // 'operacional' or other roles cannot assign goals
+        return [];
+    }
+
+    const q = query(collection(db, 'users'), ...constraints);
+    
+    try {
+        const snapshot = await getDocs(q);
+        if (role === 'diretoria') {
+            const allUsers = await getUsers();
+            return allUsers;
+        }
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (error) {
+        console.error("Error fetching assignable users:", error);
+        return [];
+    }
+}
+
+export { db, getContracts, getKpis, getChartData, getAllContractsForFiltering, getPromoterRanking, getGoals, getUsers, getUserData, getContractsForUser, getKpisForUser, getChartDataForUser, addGoal, updateGoal, deleteGoal, getAssignableUsers };

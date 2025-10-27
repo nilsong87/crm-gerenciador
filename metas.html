@@ -124,6 +124,10 @@
                             <label for="goal-period" class="form-label">Período (Mês/Ano)</label>
                             <input type="text" class="form-control" id="goal-period" placeholder="MM/YYYY" required>
                         </div>
+                        <div class="mb-3" id="assign-user-container" style="display: none;">
+                            <label for="goal-user" class="form-label">Atribuir para</label>
+                            <select class="form-select" id="goal-user"></select>
+                        </div>
                         <!-- Fields for hierarchy, to be filled by JS based on user role -->
                         <div id="hierarchy-fields"></div>
                     </form>

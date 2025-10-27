@@ -1,4 +1,4 @@
-import { getGoals, addGoal, updateGoal, deleteGoal, getUserData } from './firestore-service.js';
+import { getGoals, addGoal, updateGoal, deleteGoal, getUserData, getAssignableUsers } from './firestore-service.js';
 
 let goalModal;
 let currentUser;
@@ -111,37 +111,58 @@ async function openGoalModal(goal = null) {
         document.getElementById('goal-period').value = goal.period;
     }
 
-    // Add hierarchy fields based on role
-    const hierarchyFields = document.getElementById('hierarchy-fields');
-    hierarchyFields.innerHTML = '';
-    const userData = await getUserData(currentUser);
+    const assignUserContainer = document.getElementById('assign-user-container');
+    const userSelect = document.getElementById('goal-user');
+    userSelect.innerHTML = '';
 
-    if (currentUserRole === 'comercial') {
-        hierarchyFields.innerHTML = `<input type="hidden" id="goal-city" value="${userData.city}"><input type="hidden" id="goal-state" value="${userData.state}"><input type="hidden" id="goal-region" value="${userData.region}">`;
+    if (canWriteGoals(currentUserRole)) {
+        assignUserContainer.style.display = 'block';
+        const assignableUsers = await getAssignableUsers(currentUser, currentUserRole);
+        
+        if (assignableUsers && assignableUsers.length > 0) {
+            assignableUsers.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user.uid;
+                option.textContent = user.nome;
+                userSelect.appendChild(option);
+            });
+        } else {
+            // If no assignable users, add the current user as the only option
+            const option = document.createElement('option');
+            option.value = currentUser;
+            option.textContent = 'Atribuir a mim mesmo';
+            userSelect.appendChild(option);
+        }
+
+        if (goal && goal.userId) {
+            userSelect.value = goal.userId;
+        }
+    } else {
+        assignUserContainer.style.display = 'none';
     }
-    // Add more logic for other roles if they need to select region/state/city
 
     goalModal.show();
 }
 
 async function saveGoal() {
     const goalId = document.getElementById('goal-id').value;
+    const assignedUserId = document.getElementById('goal-user').value || currentUser;
+
     const goalData = {
         description: document.getElementById('goal-description').value,
         type: document.getElementById('goal-type').value,
         target: parseFloat(document.getElementById('goal-target').value),
         current: parseFloat(document.getElementById('goal-current').value),
         period: document.getElementById('goal-period').value,
-        userId: currentUser, // Assign the goal to the logged-in user
+        userId: assignedUserId,
     };
 
-    // Add hierarchy data
-    if (currentUserRole === 'comercial') {
-        goalData.city = document.getElementById('goal-city').value;
-        goalData.state = document.getElementById('goal-state').value;
-        goalData.region = document.getElementById('goal-region').value;
+    const assignedUserData = await getUserData(assignedUserId);
+    if (assignedUserData) {
+        goalData.city = assignedUserData.city || '';
+        goalData.state = assignedUserData.state || '';
+        goalData.region = assignedUserData.region || '';
     }
-    // Add more logic for other roles
 
     if (goalId) {
         // Update existing goal
