@@ -5,79 +5,96 @@ import { handleError } from './error-handler.js';
 
 const auth = getAuth(app);
 
-let currentUser = null;
+// Tenta obter o usuário do sessionStorage primeiro para um carregamento mais rápido
+let currentUser = JSON.parse(sessionStorage.getItem('currentUser'));
 
 onAuthStateChanged(auth, async (user) => {
     try {
         if (user) {
-            const idTokenResult = await getIdTokenResult(user);
-            const role = idTokenResult.claims.role || 'comercial';
-            const userData = await getUser(user.uid);
-            
-            currentUser = {
-                uid: user.uid,
-                email: user.email,
-                role: role,
-                state: userData ? userData.state : null,
-                city: userData ? userData.city : null,
-                ...userData
-            };
+            // Se o usuário estiver autenticado, mas não tivermos seus dados (primeiro carregamento), busque-os
+            if (!currentUser || currentUser.uid !== user.uid) {
+                const idTokenResult = await getIdTokenResult(user);
+                const role = idTokenResult.claims.role || 'comercial';
+                const userData = await getUser(user.uid);
+                
+                currentUser = {
+                    uid: user.uid,
+                    email: user.email,
+                    role: role,
+                    ...userData
+                };
+
+                // Armazena os dados do usuário no sessionStorage
+                sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
+            }
         } else {
+            // O usuário está deslogado
             currentUser = null;
-            // If on a protected page, redirect to login
+            // Limpa os dados do usuário do sessionStorage
+            sessionStorage.removeItem('currentUser');
+            
+            // Se estiver em uma página protegida, redireciona para o login
             if (!window.location.pathname.endsWith('index.html')) {
                 window.location.href = 'index.html';
             }
         }
         
+        // Este callback é crucial para que as páginas reajam assim que a autenticação for confirmada
         if (authReadyCallback) {
             authReadyCallback(currentUser);
         }
     } catch (error) {
         handleError(error, 'Authentication state change');
+        // Limpa dados em cache potencialmente corrompidos
+        sessionStorage.removeItem('currentUser');
+        currentUser = null;
+        if (authReadyCallback) {
+            authReadyCallback(null);
+        }
     }
 });
 
 let authReadyCallback = null;
 
 export function onAuth(callback) {
-    // If user is already available, call back immediately
+    // Se o usuário já estiver disponível (do cache ou da verificação de auth), chama o callback imediatamente
     if (currentUser) {
-        callback(currentUser);
+        return callback(currentUser);
     } 
-    // Otherwise, queue the callback to be called when auth state is resolved
+    // Caso contrário, enfileira o callback para ser chamado quando o estado de autenticação for resolvido
     else {
         authReadyCallback = callback;
     }
 }
 
 export function getCurrentUser() {
+    // Retorna da memória, que foi preenchida pelo cache ou pela mudança de autenticação
     return currentUser;
 }
 
 export function logout() {
+    // O listener onAuthStateChanged cuidará da limpeza do sessionStorage e do redirecionamento
     return signOut(auth);
 }
 
 /**
- * Enforces role-based access to a page.
- * @param {string[]} allowedRoles - An array of roles that are allowed to access the page.
+ * Impõe o acesso baseado em perfil a uma página.
+ * @param {string[]} allowedRoles - Um array de perfis que têm permissão para acessar a página.
  */
 export function enforceRoleAccess(allowedRoles) {
     onAuth(user => {
         if (user && !allowedRoles.includes(user.role)) {
-            console.error(`Access Denied: User with role '${user.role}' tried to access a restricted page.`);
+            console.error(`Acesso Negado: Usuário com perfil '${user.role}' tentou acessar uma página restrita.`);
             alert('Você não tem permissão para acessar esta página.');
-            // Redirect to a safe page, like the dashboard.
             window.location.href = 'dashboard.html';
         }
     });
 }
 
 /**
- * Checks if the current user has one of the specified roles.
- * @param {string[]} roles - An array of roles to check against.
- * @returns {boolean} - True if the user has one of the roles, false otherwise.
+ * Verifica se o usuário atual possui um dos perfis especificados.
+ * @param {string[]} roles - Um array de perfis para verificar.
+ * @returns {boolean} - True se o usuário tiver um dos perfis, senão false.
  */
 export function userHasRole(roles) {
     const user = getCurrentUser();
@@ -86,16 +103,13 @@ export function userHasRole(roles) {
 }
 
 
-// Logout button event listener
+// Listener para o botão de logout
 document.addEventListener('DOMContentLoaded', () => {
     const logoutButton = document.getElementById('logout-button');
     if(logoutButton) {
         logoutButton.addEventListener('click', (e) => {
             e.preventDefault();
-            logout().then(() => {
-                console.log('User signed out');
-                window.location.href = 'index.html';
-            }).catch((error) => {
+            logout().catch((error) => {
                 handleError(error, 'Logout');
             });
         });

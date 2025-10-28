@@ -3,17 +3,13 @@ import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/
 import { getCurrentUser } from './auth-manager.js';
 import { handleError } from './error-handler.js';
 import { showLoadingIndicator, hideLoadingIndicator } from './loading-indicator.js';
+import { displayKpis, displayDashboardCharts, getStatusColor } from './ui-components.js';
 
 const functions = getFunctions();
 const syncWorkbankData = httpsCallable(functions, 'syncWorkbankData');
 const syncInternalCrmData = httpsCallable(functions, 'syncInternalCrmData');
 
 let datepicker;
-
-// Chart instances
-let productionChartInstance = null;
-let marketShareChartInstance = null;
-let statusChartInstance = null;
 
 document.addEventListener('DOMContentLoaded', function() {
     try {
@@ -222,44 +218,7 @@ async function populatePromoterRanking(filters) {
 async function populateKpis(filters) {
     try {
         const kpis = await getKpis(filters);
-        
-        const kpiContainer = document.getElementById('kpi-container');
-        if (!kpiContainer) return;
-
-        kpiContainer.innerHTML = `
-            <div class="col-md-3 mb-3">
-                <div class="card text-white bg-primary">
-                    <div class="card-body">
-                        <h5 class="card-title"><i class="fas fa-file-signature"></i> Contratos Ativos</h5>
-                        <p class="card-text fs-4">${kpis.activeContracts}</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="card text-white bg-success">
-                    <div class="card-body">
-                        <h5 class="card-title"><i class="fas fa-dollar-sign"></i> Ticket Médio</h5>
-                        <p class="card-text fs-4">R$ ${kpis.averageTicket}</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="card text-white bg-info">
-                    <div class="card-body">
-                        <h5 class="card-title"><i class="fas fa-wallet"></i> Valor Total</h5>
-                        <p class="card-text fs-4">R$ ${kpis.totalValue}</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="card text-white bg-warning">
-                    <div class="card-body">
-                        <h5 class="card-title"><i class="fas fa-times-circle"></i> Cancelamentos</h5>
-                        <p class="card-text fs-4">${kpis.totalContracts - kpis.activeContracts}</p>
-                    </div>
-                </div>
-            </div>
-        `;
+        displayKpis(kpis);
     } catch (error) {
         handleError(error, 'Populate KPIs');
     }
@@ -329,100 +288,10 @@ async function populateContractsTable(filters) {
     }
 }
 
-function getStatusColor(status) {
-    switch (status) {
-        case 'pago': return 'success';
-        case 'pendente': return 'warning';
-        case 'cancelado': return 'danger';
-        default: return 'secondary';
-    }
-}
-
-function getStatusChartColors(status) {
-    switch (status) {
-        case 'pago': return '#198754'; // Bootstrap 'success'
-        case 'pendente': return '#ffc107'; // Bootstrap 'warning'
-        case 'cancelado': return '#dc3545'; // Bootstrap 'danger'
-        default: return '#6c757d'; // Bootstrap 'secondary'
-    }
-}
-
 async function initializeCharts(filters, marketShareDimension) {
     try {
         const chartData = await getChartData(filters, marketShareDimension);
-
-        // Destroy existing charts
-        if (productionChartInstance) productionChartInstance.destroy();
-        if (marketShareChartInstance) marketShareChartInstance.destroy();
-        if (statusChartInstance) statusChartInstance.destroy();
-
-        // Production Chart
-        const ctxProd = document.getElementById('productionChart');
-        if (ctxProd) {
-            productionChartInstance = new Chart(ctxProd, {
-                type: 'bar',
-                data: {
-                    labels: chartData.production.labels,
-                    datasets: [{
-                        label: 'Produção Mensal',
-                        data: chartData.production.values,
-                        backgroundColor: 'rgba(41, 98, 255, 0.7)',
-                        borderColor: 'rgba(41, 98, 255, 1)',
-                        borderWidth: 1
-                    }]
-                },
-                options: { scales: { y: { beginAtZero: true } } }
-            });
-        }
-
-        // Market Share Chart
-        const ctxMarket = document.getElementById('marketShareChart');
-        if (ctxMarket) {
-            const dimensionText = $(`#market-share-filter option[value='${marketShareDimension}']`).text();
-            marketShareChartInstance = new Chart(ctxMarket, {
-                type: 'pie',
-                data: {
-                    labels: chartData.marketShare.labels,
-                    datasets: [{
-                        label: `Market Share ${dimensionText}`,
-                        data: chartData.marketShare.values,
-                        backgroundColor: ['#2962ff', '#00c853', '#ffab00', '#d500f9', '#ff3d00', '#00b8d4', '#6200ea'],
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    plugins: {
-                        legend: {
-                            position: 'bottom',
-                        }
-                    }
-                }
-            });
-        }
-
-        // Status Chart
-        const ctxStatus = document.getElementById('statusChart');
-        if (ctxStatus) {
-            statusChartInstance = new Chart(ctxStatus, {
-                type: 'doughnut',
-                data: {
-                    labels: chartData.status.labels,
-                    datasets: [{
-                        label: 'Status dos Contratos',
-                        data: chartData.status.values,
-                        backgroundColor: chartData.status.labels.map(label => getStatusChartColors(label)),
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    plugins: {
-                        legend: {
-                            position: 'bottom',
-                        }
-                    }
-                }
-            });
-        }
+        displayDashboardCharts(chartData, marketShareDimension);
     } catch (error) {
         handleError(error, 'Initialize Charts');
     }

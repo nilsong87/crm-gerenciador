@@ -5,6 +5,7 @@ import { getUser, getContractsForUser, getKpisForUser, getChartDataForUser } fro
 import { updateUIVisibility } from './ui-visibility.js';
 import { handleError } from './error-handler.js';
 import { showLoadingIndicator, hideLoadingIndicator } from './loading-indicator.js';
+import { displayKpis, displayUserDetailsCharts } from './ui-components.js';
 
 enforceRoleAccess(['diretoria', 'superintendencia', 'gerencia_regional', 'comercial']);
 
@@ -46,7 +47,7 @@ async function initializeUserDetailsPage(selectedUserId) {
 
             // 4. Get and display charts
             const chartData = getChartDataForUser(contracts);
-            displayCharts(chartData);
+            displayUserDetailsCharts(chartData);
         }
     } catch (error) {
         handleError(error, 'Initialize User Details Page');
@@ -61,94 +62,6 @@ function displayUserInfo(userData) {
     document.getElementById('user-role').textContent = userData.role || 'N/D';
     document.getElementById('user-city').textContent = userData.city || 'Não informada';
     document.getElementById('user-state').textContent = userData.state || 'Não informado';
-}
-
-function displayKpis(kpis) {
-    const kpiContainer = document.getElementById('kpi-container');
-    kpiContainer.innerHTML = `
-        <div class="col-md-3">
-            <div class="card text-center">
-                <div class="card-body">
-                    <h5 class="card-title">Total de Contratos</h5>
-                    <p class="card-text fs-4">${kpis.totalContracts}</p>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card text-center">
-                <div class="card-body">
-                    <h5 class="card-title">Valor Total</h5>
-                    <p class="card-text fs-4">R$ ${kpis.totalValue}</p>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card text-center">
-                <div class="card-body">
-                    <h5 class="card-title">Contratos Ativos</h5>
-                    <p class="card-text fs-4">${kpis.activeContracts}</p>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card text-center">
-                <div class="card-body">
-                    <h5 class="card-title">Ticket Médio</h5>
-                    <p class="card-text fs-4">R$ ${kpis.averageTicket}</p>
-                </div>
-            </div>
-        </div>
-    `;
-}
-
-function displayCharts(chartData) {
-    // Production Chart
-    const productionCtx = document.getElementById('productionChart').getContext('2d');
-    new Chart(productionCtx, {
-        type: 'line',
-        data: {
-            labels: chartData.production.labels,
-            datasets: [{
-                label: 'Produção Mensal',
-                data: chartData.production.values,
-                borderColor: 'rgba(75, 192, 192, 1)',
-                backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                fill: true,
-            }]
-        },
-        options: {
-            responsive: true,
-            scales: {
-                y: {
-                    beginAtZero: true
-                }
-            }
-        }
-    });
-
-    // Status Chart
-    const statusCtx = document.getElementById('statusChart').getContext('2d');
-    new Chart(statusCtx, {
-        type: 'doughnut',
-        data: {
-            labels: chartData.status.labels,
-            datasets: [{
-                label: 'Status dos Contratos',
-                data: chartData.status.values,
-                backgroundColor: [
-                    'rgba(255, 99, 132, 0.7)',
-                    'rgba(54, 162, 235, 0.7)',
-                    'rgba(255, 206, 86, 0.7)',
-                    'rgba(75, 192, 192, 0.7)',
-                    'rgba(153, 102, 255, 0.7)',
-                    'rgba(255, 159, 64, 0.7)'
-                ],
-            }]
-        },
-        options: {
-            responsive: true,
-        }
-    });
 }
 
 function displayContractsTable(contracts) {
