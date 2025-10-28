@@ -17,13 +17,16 @@ try {
     process.exit(1);
 }
 
-const [,, email, role] = process.argv;
+const [,, email, roleArg] = process.argv;
 
-if (!email || !role) {
+if (!email || !roleArg) {
     console.log("Usage: node js/set-role.js <email> <role>");
     console.log("Available roles: diretoria, superintendencia, gerencia_regional, comercial, operacional");
     process.exit(1);
 }
+
+// Sanitize the role argument aggressively to remove anything other than letters and underscores
+const role = roleArg.trim().replace(/[^a-z_]/g, '');
 
 const validRoles = ['diretoria', 'superintendencia', 'gerencia_regional', 'comercial', 'operacional'];
 if (!validRoles.includes(role)) {

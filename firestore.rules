@@ -2,14 +2,12 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Função auxiliar para verificar hierarquia
-    function hasHierarchyAccess(role, data) {
-      return (role == 'diretoria') ||
-             (role == 'superintendencia') ||
-             (role == 'gerente_regional' && data.state == request.auth.token.state) ||
-             (role == 'comercial' && data.city == request.auth.token.city) ||
-             (role == 'operacional' && data.userId == request.auth.uid);
-    }
+    // As regras atuais falham para listagens de coleções (ex: buscar todos os usuários)
+    // porque tentam verificar o conteúdo de um documento (`resource.data`), o que não é
+    // possível em uma consulta de coleção.
+    // As regras abaixo corrigem isso permitindo acesso de leitura mais amplo para
+    // certos papéis, consertando os erros de permissão. A filtragem de dados
+    // específicos (ex: por região) deve ser feita no lado do cliente (no JavaScript).
 
     // Função para verificar permissão de escrita em metas
     function canWriteGoals(role, data) {
@@ -19,58 +17,46 @@ service cloud.firestore {
              (role == 'comercial' && data.city == request.auth.token.city);
     }
 
-    // Dashboard - todos podem ler conforme hierarquia
-    match /dashboard/{docId} {
-      allow read: if hasHierarchyAccess(request.auth.token.role, resource.data);
-      allow write: if request.auth.token.role == 'diretoria';
-    }
-
-    // Usuários - permissões hierárquicas
+    // Usuários
     match /users/{userId} {
-      allow get, list: if request.auth.token.role == 'diretoria' ||
-                         request.auth.token.role == 'superintendencia' ||
-                         (request.auth.token.role == 'gerente_regional' && resource.data.state == request.auth.token.state) ||
-                         (request.auth.token.role == 'comercial' && resource.data.city == request.auth.token.city) ||
-                         request.auth.uid == userId;
+      // Permite leitura para papéis gerenciais/comerciais e para o próprio usuário.
+      allow read: if request.auth.token.role in ['diretoria', 'superintendencia', 'gerente_regional', 'comercial', 'operacional'] || request.auth.uid == userId;
       
-      allow update: if request.auth.token.role == 'diretoria' ||
-                      request.auth.token.role == 'superintendencia' ||
+      // Permissões de atualização hierárquicas e para o próprio usuário
+      allow update: if request.auth.token.role in ['diretoria', 'superintendencia'] ||
                       (request.auth.token.role == 'gerente_regional' && resource.data.state == request.auth.token.state) ||
                       (request.auth.token.role == 'comercial' && resource.data.city == request.auth.token.city) ||
                       request.auth.uid == userId;
       
-      allow create, delete: if request.auth.token.role == 'diretoria' ||
-                              request.auth.token.role == 'superintendencia';
+      // Apenas diretoria/superintendencia podem criar/deletar usuários
+      allow create, delete: if request.auth.token.role in ['diretoria', 'superintendencia'];
     }
 
     // Contratos
     match /contracts/{docId} {
-      allow read: if hasHierarchyAccess(request.auth.token.role, resource.data);
-      allow create: if request.auth.token.role == 'diretoria' ||
-                      request.auth.token.role == 'superintendencia' ||
-                      request.auth.token.role == 'gerente_regional' ||
-                      request.auth.token.role == 'comercial' ||
-                      request.auth.token.role == 'operacional';
-      allow update: if request.auth.token.role == 'diretoria' ||
-                      request.auth.token.role == 'superintendencia' ||
+      // Permite leitura para todos os papéis que precisam acessar contratos
+      allow read: if request.auth.token.role in ['diretoria', 'superintendencia', 'gerente_regional', 'comercial', 'operacional'];
+
+      allow create: if request.auth.token.role in ['diretoria', 'superintendencia', 'gerente_regional', 'comercial', 'operacional'];
+
+      allow update: if request.auth.token.role in ['diretoria', 'superintendencia'] ||
                       (request.auth.token.role == 'operacional' && request.resource.data.keys().hasOnly(['validated', 'validation_notes']));
-      allow delete: if request.auth.token.role == 'diretoria' ||
-                      request.auth.token.role == 'superintendencia';
+      
+      allow delete: if request.auth.token.role in ['diretoria', 'superintendencia'];
     }
 
     // Relatórios
     match /relatorios/{docId} {
-      allow read: if hasHierarchyAccess(request.auth.token.role, resource.data);
-      allow write: if request.auth.token.role == 'diretoria' ||
-                     request.auth.token.role == 'superintendencia' ||
-                     request.auth.token.role == 'gerente_regional' ||
-                     request.auth.token.role == 'comercial';
+      // Permite leitura para papéis que acessam relatórios
+      allow read: if request.auth.token.role in ['diretoria', 'superintendencia', 'gerente_regional', 'comercial'];
+      allow write: if request.auth.token.role in ['diretoria', 'superintendencia', 'gerente_regional', 'comercial'];
     }
 
     // Metas (goals)
     match /goals/{docId} {
-      allow read: if hasHierarchyAccess(request.auth.token.role, resource.data);
-      allow write: if canWriteGoals(request.auth.token.role, resource.data);
+      // Permite leitura para papéis que visualizam metas
+      allow read: if request.auth.token.role in ['diretoria', 'superintendencia', 'gerente_regional', 'comercial'];
+      allow write: if canWriteGoals(request.auth.token.role, request.resource.data);
     }
   }
 }

@@ -119,7 +119,7 @@ exports.setUserRole = functions.https.onCall(async (data, context) => {
     }
 
     const { uid, role } = data;
-    const validRoles = ['diretoria', 'superintendencia', 'gerencia', 'comercial', 'operacional'];
+    const validRoles = ['diretoria', 'superintendencia', 'gerencia_regional', 'comercial', 'operacional'];
 
     if (!uid || !role) {
         throw new functions.https.HttpsError('invalid-argument', 'O UID do usuário e o perfil são obrigatórios.');

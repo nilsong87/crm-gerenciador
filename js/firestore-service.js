@@ -45,9 +45,11 @@ async function getAllContractsForFiltering() {
 
         console.log(`Fetching all contracts for filter population for role: ${user.role}`);
         let q;
-        if (user.role === 'comercial' || user.role === 'operacional') {
+        if (user.role === 'comercial') {
+            q = query(collection(db, 'contracts'), where('city', '==', user.city));
+        } else if (user.role === 'operacional') {
             q = query(collection(db, 'contracts'), where('userId', '==', user.uid));
-        } else if (user.role === 'gerente_regional') {
+        } else if (user.role === 'gerencia_regional') {
             q = query(collection(db, 'contracts'), where('state', '==', user.state));
         } else {
             // For other roles like 'diretoria' and 'superintendencia', fetch all.
@@ -79,7 +81,7 @@ async function getContracts(filters = {}) {
         // Role-based constraints
         if (user.role === 'comercial') {
             constraints.push(where('city', '==', user.city));
-        } else if (user.role === 'gerente_regional') {
+        } else if (user.role === 'gerencia_regional') {
             constraints.push(where('state', '==', user.state));
         } else if (user.role === 'operacional') {
             constraints.push(where('userId', '==', user.uid));
@@ -262,7 +264,7 @@ async function getGoals() {
             constraints.push(where('userId', '==', user.uid));
         } else if (user.role === 'comercial') {
             constraints.push(where('city', '==', user.city));
-        } else if (user.role === 'gerente_regional') {
+        } else if (user.role === 'gerencia_regional') {
             constraints.push(where('state', '==', user.state));
         }
         // For 'diretoria' and 'superintendencia', no constraints are added, so they see all goals.
@@ -291,7 +293,7 @@ async function getUsers() {
 
         if (user.role === 'diretoria' || user.role === 'superintendencia') {
             q = query(usersCollection);
-        } else if (user.role === 'gerente_regional') {
+        } else if (user.role === 'gerencia_regional') {
             q = query(usersCollection, where('state', '==', user.state));
         } else if (user.role === 'comercial') {
             q = query(usersCollection, where('city', '==', user.city));
@@ -322,7 +324,7 @@ async function getContractsForUser(selectedUserId) {
         // Add role-based constraints for the logged-in user
         if (user.role === 'comercial') {
             constraints.push(where('city', '==', user.city));
-        } else if (user.role === 'gerente_regional') {
+        } else if (user.role === 'gerencia_regional') {
             constraints.push(where('state', '==', user.state));
         }
         // For 'diretoria' and 'superintendencia', no additional constraints are needed.
@@ -449,11 +451,11 @@ async function getAssignableUsers() {
         if (user.role === 'comercial') {
             constraints.push(where('role', '==', 'operacional'));
             constraints.push(where('city', '==', user.city));
-        } else if (user.role === 'gerente_regional') {
+        } else if (user.role === 'gerencia_regional') {
             constraints.push(where('role', '==', 'comercial'));
             constraints.push(where('state', '==', user.state));
         } else if (user.role === 'superintendencia') {
-            constraints.push(where('role', '==', 'gerente_regional'));
+            constraints.push(where('role', '==', 'gerencia_regional'));
         } else if (user.role === 'diretoria') {
             // No constraints, fetch all users
         } else {
