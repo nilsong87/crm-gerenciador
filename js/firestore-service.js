@@ -1,115 +1,135 @@
 import { app } from './firebase-config.js';
 import { getFirestore, collection, getDocs, query, where, orderBy, doc, getDoc, addDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
+import { getCurrentUser } from './auth-manager.js';
+import { handleError } from './error-handler.js';
 
 const db = getFirestore(app);
+
+async function getUser(uid) {
+    try {
+        const userRef = doc(db, "users", uid);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+            return userSnap.data();
+        } else {
+            console.log("No such user!");
+            return null;
+        }
+    } catch (error) {
+        handleError(error, 'Get User');
+        return null;
+    }
+}
+
+async function updateUserName(uid, newName) {
+    try {
+        const userRef = doc(db, "users", uid);
+        return await updateDoc(userRef, {
+            nome: newName
+        });
+    } catch (error) {
+        handleError(error, 'Update User Name');
+    }
+}
+
 
 /**
  * Fetches all contracts from Firestore without any filters.
  * This is used to populate the filter dropdowns.
- * @param {string} role - The user's role.
  * @returns {Promise<Array>} A promise that resolves to an array of contract objects.
  */
-async function getAllContractsForFiltering(uid, role) {
-    console.log(`Fetching all contracts for filter population for role: ${role}`);
-    let q;
-    if (role === 'comercial' || role === 'operacional') {
-        q = query(collection(db, 'contracts'), where('userId', '==', uid));
-    } else if (role === 'gerencia') {
-        const userData = await getUserData(uid);
-        if (userData && userData.regiao) {
-            q = query(collection(db, 'contracts'), where('regiao', '==', userData.regiao));
+async function getAllContractsForFiltering() {
+    try {
+        const user = getCurrentUser();
+        if (!user) return [];
+
+        console.log(`Fetching all contracts for filter population for role: ${user.role}`);
+        let q;
+        if (user.role === 'comercial' || user.role === 'operacional') {
+            q = query(collection(db, 'contracts'), where('userId', '==', user.uid));
+        } else if (user.role === 'gerente_regional') {
+            q = query(collection(db, 'contracts'), where('state', '==', user.state));
         } else {
-            // Gerencia without a region, return nothing to avoid errors.
-            return [];
+            // For other roles like 'diretoria' and 'superintendencia', fetch all.
+            q = query(collection(db, 'contracts'));
         }
-    } else {
-        // For other roles like 'diretoria' and 'superintendencia', fetch all.
-        q = query(collection(db, 'contracts'));
-    }
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => doc.data());
-}
-
-
-async function getUserData(uid) {
-    const userRef = doc(db, "users", uid);
-    const userSnap = await getDoc(userRef);
-    if (userSnap.exists()) {
-        return userSnap.data();
-    } else {
-        console.log("No such user!");
-        return null;
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => doc.data());
+    } catch (error) {
+        handleError(error, 'Get All Contracts For Filtering');
+        return [];
     }
 }
 
 /**
  * Fetches contracts from Firestore based on role and filters.
- * @param {string} uid - The user's ID.
- * @param {string} role - The user's role.
  * @param {object} filters - The filters to apply.
  * @returns {Promise<Array>} A promise that resolves to an array of contract objects.
  */
-async function getContracts(uid, role, filters = {}) {
-    const { status, startDate, endDate, promotora, regiao, cpfContrato, tabela, tipoEmpresa } = filters;
-    let constraints = [];
+async function getContracts(filters = {}) {
+    try {
+        const user = getCurrentUser();
+        if (!user) return [];
 
-    console.log(`Fetching data for user ${uid} with role: ${role}`);
+        const { status, startDate, endDate, promotora, regiao, cpfContrato, tabela, tipoEmpresa } = filters;
+        let constraints = [];
 
-    // Role-based constraints
-    if (role === 'comercial' || role === 'operacional') {
-        constraints.push(where('userId', '==', uid));
-    } else if (role === 'gerencia') {
-        const userData = await getUserData(uid);
-        if (userData && userData.regiao) {
-            constraints.push(where('regiao', '==', userData.regiao));
+        console.log(`Fetching data for user ${user.uid} with role: ${user.role}`);
+
+        // Role-based constraints
+        if (user.role === 'comercial') {
+            constraints.push(where('city', '==', user.city));
+        } else if (user.role === 'gerente_regional') {
+            constraints.push(where('state', '==', user.state));
+        } else if (user.role === 'operacional') {
+            constraints.push(where('userId', '==', user.uid));
         }
-    }
-    // For 'diretoria' and 'superintendencia', no constraints are added, so they see all contracts.
+        // For 'diretoria' and 'superintendencia', no constraints are added, so they see all contracts.
 
-    // Filter constraints
-    if (status) {
-        constraints.push(where('status', '==', status));
-    }
-    if (promotora) {
-        constraints.push(where('promotora', '==', promotora));
-    }
-    if (regiao) {
-        constraints.push(where('regiao', '==', regiao));
-    }
-    if (tabela) {
-        constraints.push(where('tabela', '==', tabela));
-    }
-    if (tipoEmpresa) {
-        constraints.push(where('tipoEmpresa', '==', tipoEmpresa));
-    }
-    // NOTE: This filter only searches the clientCpf field, not the contract ID.
-    // For a more robust search, the data should be structured to include a combined search field.
-    if (cpfContrato) {
-        constraints.push(where('clientCpf', '==', cpfContrato));
-    }
-    if (startDate) {
-        constraints.push(where('date', '>=', startDate));
-    }
-    if (endDate) {
-        constraints.push(where('date', '<=', endDate));
-    }
+        // Filter constraints
+        if (status) {
+            constraints.push(where('status', '==', status));
+        }
+        if (promotora) {
+            constraints.push(where('promotora', '==', promotora));
+        }
+        if (regiao) {
+            constraints.push(where('regiao', '==', regiao));
+        }
+        if (tabela) {
+            constraints.push(where('tabela', '==', tabela));
+        }
+        if (tipoEmpresa) {
+            constraints.push(where('tipoEmpresa', '==', tipoEmpresa));
+        }
+        if (cpfContrato) {
+            constraints.push(where('clientCpf', '==', cpfContrato));
+        }
+        if (startDate) {
+            constraints.push(where('date', '>=', startDate));
+        }
+        if (endDate) {
+            constraints.push(where('date', '<=', endDate));
+        }
 
-    const q = query(collection(db, 'contracts'), ...constraints, orderBy('date', 'desc'));
-    
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const q = query(collection(db, 'contracts'), ...constraints, orderBy('date', 'desc'));
+        
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (error) {
+        handleError(error, 'Get Contracts');
+        return [];
+    }
 }
 
 /**
  * Fetches KPI data from Firestore based on role and filters.
- * @param {string} role - The user's role.
  * @param {object} filters - The filters to apply.
  * @returns {Promise<Object>} A promise that resolves to an object with KPI values.
  */
-async function getKpis(uid, role, filters = {}) {
+async function getKpis(filters = {}) {
     try {
-        const contracts = await getContracts(uid, role, filters);
+        const contracts = await getContracts(filters);
         
         const totalContracts = contracts.length;
         let totalValue = 0;
@@ -131,7 +151,7 @@ async function getKpis(uid, role, filters = {}) {
             totalValue: totalValue.toFixed(2)
         };
     } catch (error) {
-        console.error("Error fetching KPIs: ", error);
+        handleError(error, 'Get KPIs');
         return {
             totalContracts: 0,
             activeContracts: 0,
@@ -143,15 +163,13 @@ async function getKpis(uid, role, filters = {}) {
 
 /**
  * Fetches data for dashboard charts based on role and filters.
- * @param {string} uid - The user's ID.
- * @param {string} role - The user's role.
  * @param {object} filters - The filters to apply.
  * @param {string} marketShareDimension - The dimension for the market share chart.
  * @returns {Promise<Object>} A promise that resolves to an object with chart data.
  */
-async function getChartData(uid, role, filters = {}, marketShareDimension = 'promotora') {
+async function getChartData(filters = {}, marketShareDimension = 'promotora') {
     try {
-        const contracts = await getContracts(uid, role, filters);
+        const contracts = await getContracts(filters);
         
         const productionData = {}; // { 'YYYY-MM': totalValue }
         const marketShareData = {}; // { dimensionValue: count }
@@ -193,7 +211,7 @@ async function getChartData(uid, role, filters = {}, marketShareDimension = 'pro
         };
 
     } catch (error) {
-        console.error("Error fetching chart data: ", error);
+        handleError(error, 'Get Chart Data');
         return {
             production: { labels: [], values: [] },
             marketShare: { labels: [], values: [] },
@@ -204,14 +222,12 @@ async function getChartData(uid, role, filters = {}, marketShareDimension = 'pro
 
 /**
  * Calculates the ranking of promoters based on total contract value.
- * @param {string} uid - The user's ID.
- * @param {string} role - The user's role.
  * @param {object} filters - The filters to apply.
  * @returns {Promise<Array>} A promise that resolves to a sorted array of promoter ranking objects.
  */
-async function getPromoterRanking(uid, role, filters = {}) {
+async function getPromoterRanking(filters = {}) {
     try {
-        const contracts = await getContracts(uid, role, filters);
+        const contracts = await getContracts(filters);
         const ranking = {}; // { promoterName: totalValue }
 
         contracts.forEach(contract => {
@@ -230,38 +246,33 @@ async function getPromoterRanking(uid, role, filters = {}) {
         return sortedRanking;
 
     } catch (error) {
-        console.error("Error fetching promoter ranking: ", error);
+        handleError(error, 'Get Promoter Ranking');
         return [];
     }
 }
 
-async function getGoals(uid, role) {
-    const userData = await getUserData(uid);
-    if (!userData) {
-        console.error("Could not get user data for goals.");
-        return [];
-    }
-
-    let constraints = [];
-
-    if (role === 'operacional') {
-        constraints.push(where('userId', '==', uid));
-    } else if (role === 'comercial') {
-        constraints.push(where('city', '==', userData.city));
-    } else if (role === 'gerente_regional' || role === 'gerencia') { // Assuming gerencia is gerente_regional
-        constraints.push(where('state', '==', userData.state));
-    } else if (role === 'superintendencia') {
-        constraints.push(where('region', '==', userData.region));
-    }
-    // For 'diretoria', no constraints are added, so they see all goals.
-
-    const q = query(collection(db, 'goals'), ...constraints);
-    
+async function getGoals() {
     try {
+        const user = getCurrentUser();
+        if (!user) return [];
+
+        let constraints = [];
+
+        if (user.role === 'operacional') {
+            constraints.push(where('userId', '==', user.uid));
+        } else if (user.role === 'comercial') {
+            constraints.push(where('city', '==', user.city));
+        } else if (user.role === 'gerente_regional') {
+            constraints.push(where('state', '==', user.state));
+        }
+        // For 'diretoria' and 'superintendencia', no constraints are added, so they see all goals.
+
+        const q = query(collection(db, 'goals'), ...constraints);
+        
         const snapshot = await getDocs(q);
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     } catch (error) {
-        console.error("Error fetching goals:", error);
+        handleError(error, 'Get Goals');
         return [];
     }
 }
@@ -272,49 +283,57 @@ async function getGoals(uid, role) {
  */
 async function getUsers() {
     try {
+        const user = getCurrentUser();
+        if (!user) return [];
+
         const usersCollection = collection(db, 'users');
-        const userSnapshot = await getDocs(usersCollection);
+        let q;
+
+        if (user.role === 'diretoria' || user.role === 'superintendencia') {
+            q = query(usersCollection);
+        } else if (user.role === 'gerente_regional') {
+            q = query(usersCollection, where('state', '==', user.state));
+        } else if (user.role === 'comercial') {
+            q = query(usersCollection, where('city', '==', user.city));
+        } else {
+            // Should not happen based on page access rules, but as a fallback
+            return [];
+        }
+
+        const userSnapshot = await getDocs(q);
         const userList = userSnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
         return userList;
     } catch (error) {
-        console.error("Error fetching users:", error);
+        handleError(error, 'Get Users');
         return null;
     }
 }
 
-async function getContractsForUser(loggedInUserUid, loggedInUserRole, selectedUserId) {
-    let constraints = [];
-
-    // Add the main filter for the selected user
-    constraints.push(where('userId', '==', selectedUserId));
-
-    // Get the logged-in user's data to get their region, state, etc.
-    const loggedInUserData = await getUserData(loggedInUserUid);
-    if (!loggedInUserData) {
-        console.error("Could not get logged-in user's data.");
-        return [];
-    }
-
-    // Add role-based constraints for the logged-in user
-    if (loggedInUserRole === 'comercial') {
-        constraints.push(where('city', '==', loggedInUserData.city));
-    } else if (loggedInUserRole === 'gerencia_regional' || loggedInUserRole === 'gerencia') { // Handle both role names
-        constraints.push(where('state', '==', loggedInUserData.state));
-    } else if (loggedInUserRole === 'superintendencia') {
-        constraints.push(where('region', '==', loggedInUserData.region));
-    }
-    // For 'diretoria', no additional constraints are needed.
-    // 'operacional' can only see their own data, which is already handled by the initial 'userId' filter.
-
-    const q = query(collection(db, 'contracts'), ...constraints, orderBy('date', 'desc'));
-    
+async function getContractsForUser(selectedUserId) {
     try {
+        const user = getCurrentUser();
+        if (!user) return [];
+
+        let constraints = [];
+
+        // Add the main filter for the selected user
+        constraints.push(where('userId', '==', selectedUserId));
+
+        // Add role-based constraints for the logged-in user
+        if (user.role === 'comercial') {
+            constraints.push(where('city', '==', user.city));
+        } else if (user.role === 'gerente_regional') {
+            constraints.push(where('state', '==', user.state));
+        }
+        // For 'diretoria' and 'superintendencia', no additional constraints are needed.
+        // 'operacional' can only see their own data, which is already handled by the initial 'userId' filter.
+
+        const q = query(collection(db, 'contracts'), ...constraints, orderBy('date', 'desc'));
+        
         const snapshot = await getDocs(q);
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     } catch (error) {
-        console.error("Error fetching contracts for user:", error);
-        // This is where the permission error will likely be caught.
-        // We can provide a more user-friendly message here if needed.
+        handleError(error, 'Get Contracts For User');
         return [];
     }
 }
@@ -393,7 +412,7 @@ async function addGoal(goalData) {
         const docRef = await addDoc(goalsCollection, goalData);
         return docRef.id;
     } catch (error) {
-        console.error("Error adding goal: ", error);
+        handleError(error, 'Add Goal');
         return null;
     }
 }
@@ -404,7 +423,7 @@ async function updateGoal(goalId, goalData) {
         await updateDoc(goalRef, goalData);
         return true;
     } catch (error) {
-        console.error("Error updating goal: ", error);
+        handleError(error, 'Update Goal');
         return false;
     }
 }
@@ -415,49 +434,45 @@ async function deleteGoal(goalId) {
         await deleteDoc(goalRef);
         return true;
     } catch (error) {
-        console.error("Error deleting goal: ", error);
+        handleError(error, 'Delete Goal');
         return false;
     }
 }
 
-async function getAssignableUsers(uid, role) {
-    const userData = await getUserData(uid);
-    if (!userData) {
-        console.error("Could not get user data for assignable users.");
-        return [];
-    }
-
-    let constraints = [];
-
-    if (role === 'comercial') {
-        constraints.push(where('role', '==', 'operacional'));
-        constraints.push(where('city', '==', userData.city));
-    } else if (role === 'gerente_regional' || role === 'gerencia') {
-        constraints.push(where('role', '==', 'comercial'));
-        constraints.push(where('state', '==', userData.state));
-    } else if (role === 'superintendencia') {
-        constraints.push(where('role', '==', 'gerente_regional'));
-        constraints.push(where('region', '==', userData.region));
-    } else if (role === 'diretoria') {
-        // No constraints, fetch all users
-    } else {
-        // 'operacional' or other roles cannot assign goals
-        return [];
-    }
-
-    const q = query(collection(db, 'users'), ...constraints);
-    
+async function getAssignableUsers() {
     try {
+        const user = getCurrentUser();
+        if (!user) return [];
+
+        let constraints = [];
+
+        if (user.role === 'comercial') {
+            constraints.push(where('role', '==', 'operacional'));
+            constraints.push(where('city', '==', user.city));
+        } else if (user.role === 'gerente_regional') {
+            constraints.push(where('role', '==', 'comercial'));
+            constraints.push(where('state', '==', user.state));
+        } else if (user.role === 'superintendencia') {
+            constraints.push(where('role', '==', 'gerente_regional'));
+        } else if (user.role === 'diretoria') {
+            // No constraints, fetch all users
+        } else {
+            // 'operacional' or other roles cannot assign goals
+            return [];
+        }
+
+        const q = query(collection(db, 'users'), ...constraints);
+        
         const snapshot = await getDocs(q);
-        if (role === 'diretoria') {
+        if (user.role === 'diretoria') {
             const allUsers = await getUsers();
             return allUsers;
         }
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     } catch (error) {
-        console.error("Error fetching assignable users:", error);
+        handleError(error, 'Get Assignable Users');
         return [];
     }
 }
 
-export { db, getContracts, getKpis, getChartData, getAllContractsForFiltering, getPromoterRanking, getGoals, getUsers, getUserData, getContractsForUser, getKpisForUser, getChartDataForUser, addGoal, updateGoal, deleteGoal, getAssignableUsers };
+export { db, getContracts, getKpis, getChartData, getAllContractsForFiltering, getPromoterRanking, getGoals, getUsers, getUser, updateUserName, getContractsForUser, getKpisForUser, getChartDataForUser, addGoal, updateGoal, deleteGoal, getAssignableUsers };

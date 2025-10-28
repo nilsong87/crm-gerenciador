@@ -1,17 +1,29 @@
+import { enforceRoleAccess } from './auth-manager.js';
+const allowedRoles = ['diretoria', 'superintendencia', 'gerencia_regional', 'comercial'];
+enforceRoleAccess(allowedRoles);
+
 import { getUsers } from './firestore-service.js';
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
+import { getCurrentUser } from './auth-manager.js';
+import { handleError } from './error-handler.js';
+import { showLoadingIndicator, hideLoadingIndicator } from './loading-indicator.js';
 
 let usersDataTable;
 let editUserModal;
 
 // Called from usuarios.html after auth state is confirmed
-export function initializeUsersPage(uid, role) {
-    console.log("Initializing users page for role:", role);
-    editUserModal = new bootstrap.Modal(document.getElementById('editUserModal'));
-    initializeDataTable();
-    loadUsers();
+export function initializeUsersPage() {
+    try {
+        const user = getCurrentUser();
+        console.log("Initializing users page for role:", user.role);
+        editUserModal = new bootstrap.Modal(document.getElementById('editUserModal'));
+        initializeDataTable();
+        loadUsers();
 
-    document.getElementById('save-user-button').addEventListener('click', saveUserRole);
+        document.getElementById('save-user-button').addEventListener('click', saveUserRole);
+    } catch (error) {
+        handleError(error, 'Initialize Users Page');
+    }
 }
 
 function initializeDataTable() {
@@ -28,34 +40,45 @@ function initializeDataTable() {
         ],
         responsive: true,
         language: {
-            url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json',
+            url: 'js/i18n/pt-BR.json',
             emptyTable: "Nenhum usuário encontrado."
         }
     });
 
     // Add event listener for edit buttons
     $('#usersTable tbody').on('click', '.edit-btn', function () {
-        const row = usersDataTable.row($(this).parents('tr')).data();
-        const userId = $(this).data('id');
-        openEditModal(userId, row[1], row[2]); // email, role
+        try {
+            const row = usersDataTable.row($(this).parents('tr')).data();
+            const userId = $(this).data('id');
+            openEditModal(userId, row[1], row[2]); // email, role
+        } catch (error) {
+            handleError(error, 'Open Edit Modal');
+        }
     });
 }
 
 async function loadUsers() {
-    const users = await getUsers();
-    console.log("Dados dos usuários recebidos do Firestore:", users); // Adicione esta linha
-    if (!users) return;
+    showLoadingIndicator();
+    try {
+        const users = await getUsers();
+        console.log("Dados dos usuários recebidos do Firestore:", users); // Adicione esta linha
+        if (!users) return;
 
-    const tableData = users.map(user => {
-        return [
-            `<a href="usuario-detalhes.html?uid=${user.uid}">${user.nome || 'Não informado'}</a>`,
-            user.email,
-            user.role || 'N/D',
-            `<button class="btn btn-sm btn-primary edit-btn" data-id="${user.uid}">Editar</button>`
-        ];
-    });
+        const tableData = users.map(user => {
+            return [
+                `<a href="usuario-detalhes.html?uid=${user.uid}">${user.nome || 'Não informado'}</a>`,
+                user.email,
+                user.role || 'N/D',
+                `<button class="btn btn-sm btn-primary edit-btn" data-id="${user.uid}">Editar</button>`
+            ];
+        });
 
-    usersDataTable.clear().rows.add(tableData).draw();
+        usersDataTable.clear().rows.add(tableData).draw();
+    } catch (error) {
+        handleError(error, 'Load Users');
+    } finally {
+        hideLoadingIndicator();
+    }
 }
 
 function openEditModal(userId, email, currentRole) {
@@ -66,19 +89,21 @@ function openEditModal(userId, email, currentRole) {
 }
 
 async function saveUserRole() {
-    const userId = document.getElementById('edit-user-id').value;
-    const newRole = document.getElementById('edit-user-role').value;
-
-    if (!userId || !newRole) {
-        alert('Erro: ID do usuário ou novo perfil não encontrado.');
-        return;
-    }
-
-    const saveButton = document.getElementById('save-user-button');
-    saveButton.disabled = true;
-    saveButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Salvando...';
-
+    showLoadingIndicator();
     try {
+        const userId = document.getElementById('edit-user-id').value;
+        const newRole = document.getElementById('edit-user-role').value;
+
+        if (!userId || !newRole) {
+            alert('Erro: ID do usuário ou novo perfil não encontrado.');
+            return;
+        }
+
+        const saveButton = document.getElementById('save-user-button');
+        saveButton.disabled = true;
+        saveButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Salvando...';
+
+        
         // We need a cloud function to update user claims from the client side securely
         const functions = getFunctions();
         const setUserRole = httpsCallable(functions, 'setUserRole');
@@ -86,12 +111,13 @@ async function saveUserRole() {
 
         alert('Perfil do usuário atualizado com sucesso!');
         editUserModal.hide();
-        loadUsers(); // Refresh the table
+        await loadUsers(); // Refresh the table
     } catch (error) {
-        console.error("Erro ao atualizar perfil:", error);
-        alert(`Erro ao atualizar perfil: ${error.message}`);
+        handleError(error, 'Save User Role');
     } finally {
+        const saveButton = document.getElementById('save-user-button');
         saveButton.disabled = false;
         saveButton.innerHTML = 'Salvar Alterações';
+        hideLoadingIndicator();
     }
 }

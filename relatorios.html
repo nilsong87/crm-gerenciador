@@ -157,7 +157,6 @@
     <!-- DataTables JS -->
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
-    <script src="//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json"></script>
     <!-- Litepicker JS -->
     <script src="https://cdn.jsdelivr.net/npm/litepicker/dist/litepicker.js"></script>
     <!-- jsPDF and autoTable for PDF export -->
@@ -170,38 +169,18 @@
     
     <!-- Firebase & App Logic -->
     <script type="module">
-        import { app } from './js/firebase-config.js';
-        import { getAuth, onAuthStateChanged, signOut, getIdTokenResult } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { onAuth } from './js/auth-manager.js';
         import { initializeReports } from './js/relatorios.js';
+        import { updateUIVisibility } from './js/ui-visibility.js';
 
-        const auth = getAuth(app);
-
-        // Check auth state
-        onAuthStateChanged(auth, (user) => {
+        onAuth((user) => {
             if (user) {
-                getIdTokenResult(user).then((idTokenResult) => {
-                    const role = idTokenResult.claims.role || 'comercial'; // Default to 'comercial' if no role
-                    console.log(`User role: ${role}`);
-                    initializeReports(user.uid, role);
-                });
+                updateUIVisibility(user.role);
+                initializeReports();
             } else {
-                // User is signed out, redirect to login
                 window.location.href = 'index.html';
             }
         });
-
-        // Logout
-        const logoutButton = document.getElementById('logout-button');
-        if(logoutButton) {
-            logoutButton.addEventListener('click', (e) => {
-                e.preventDefault();
-                signOut(auth).then(() => {
-                    console.log('User signed out');
-                }).catch((error) => {
-                    console.error('Sign out error', error);
-                });
-            });
-        }
     </script>
 </body>
 </html>

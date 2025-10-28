@@ -1,50 +1,64 @@
-import { getGoals, addGoal, updateGoal, deleteGoal, getUserData, getAssignableUsers } from './firestore-service.js';
+import { getGoals, addGoal, updateGoal, deleteGoal, getUser, getAssignableUsers } from './firestore-service.js';
+import { getCurrentUser } from './auth-manager.js';
+import { handleError } from './error-handler.js';
+import { showLoadingIndicator, hideLoadingIndicator } from './loading-indicator.js';
 
 let goalModal;
-let currentUser;
-let currentUserRole;
 
 // Called from metas.html after auth state is confirmed
-export async function initializeMetas(uid, role) {
-    console.log("Initializing metas for role:", role);
-    currentUser = uid;
-    currentUserRole = role;
-    goalModal = new bootstrap.Modal(document.getElementById('goalModal'));
+export async function initializeMetas() {
+    showLoadingIndicator();
+    try {
+        const user = getCurrentUser();
+        console.log("Initializing metas for role:", user.role);
+        goalModal = new bootstrap.Modal(document.getElementById('goalModal'));
 
-    const addGoalButton = document.getElementById('add-goal-button');
-    const saveGoalButton = document.getElementById('save-goal-button');
+        const addGoalButton = document.getElementById('add-goal-button');
+        const saveGoalButton = document.getElementById('save-goal-button');
 
-    if (canWriteGoals(role)) {
-        addGoalButton.style.display = 'block';
-        addGoalButton.addEventListener('click', () => openGoalModal());
+        if (canWriteGoals(user.role)) {
+            addGoalButton.style.display = 'block';
+            addGoalButton.addEventListener('click', () => openGoalModal());
+        }
+
+        saveGoalButton.addEventListener('click', saveGoal);
+
+        await loadGoals();
+    } catch (error) {
+        handleError(error, 'Initialize Metas');
+    } finally {
+        hideLoadingIndicator();
     }
-
-    saveGoalButton.addEventListener('click', saveGoal);
-
-    loadGoals(uid, role);
 }
 
 function canWriteGoals(role) {
-    return ['diretoria', 'gerencia', 'superintendencia', 'gerente_regional', 'comercial'].includes(role);
+    return ['diretoria', 'superintendencia', 'gerente_regional', 'comercial'].includes(role);
 }
 
-async function loadGoals(uid, role) {
-    const goalsContainer = document.getElementById('goals-container');
-    if (!goalsContainer) return;
+async function loadGoals() {
+    showLoadingIndicator();
+    try {
+        const goalsContainer = document.getElementById('goals-container');
+        if (!goalsContainer) return;
 
-    goalsContainer.innerHTML = '<p>Carregando metas...</p>';
-    const goals = await getGoals(uid, role);
+        goalsContainer.innerHTML = '<p>Carregando metas...</p>';
+        const goals = await getGoals();
 
-    if (!goals || goals.length === 0) {
-        goalsContainer.innerHTML = '<p>Nenhuma meta encontrada para o seu perfil.</p>';
-        return;
+        if (!goals || goals.length === 0) {
+            goalsContainer.innerHTML = '<p>Nenhuma meta encontrada para o seu perfil.</p>';
+            return;
+        }
+
+        goalsContainer.innerHTML = '';
+        goals.forEach(goal => {
+            const goalCard = createGoalCard(goal);
+            goalsContainer.appendChild(goalCard);
+        });
+    } catch (error) {
+        handleError(error, 'Load Goals');
+    } finally {
+        hideLoadingIndicator();
     }
-
-    goalsContainer.innerHTML = '';
-    goals.forEach(goal => {
-        const goalCard = createGoalCard(goal);
-        goalsContainer.appendChild(goalCard);
-    });
 }
 
 function createGoalCard(goal) {
@@ -57,8 +71,9 @@ function createGoalCard(goal) {
     const formattedCurrent = goal.type === 'value' ? `R$ ${goal.current.toFixed(2)}` : goal.current;
     const formattedTarget = goal.type === 'value' ? `R$ ${goal.target.toFixed(2)}` : goal.target;
 
+    const user = getCurrentUser();
     let actionButtons = '';
-    if (canWriteGoals(currentUserRole)) {
+    if (canWriteGoals(user.role)) {
         actionButtons = `
             <div class="position-absolute top-0 end-0 p-2">
                 <button class="btn btn-sm btn-outline-primary edit-goal-btn"><i class="fas fa-edit"></i></button>
@@ -90,7 +105,7 @@ function createGoalCard(goal) {
         </div>
     `;
 
-    if (canWriteGoals(currentUserRole)) {
+    if (canWriteGoals(user.role)) {
         col.querySelector('.edit-goal-btn').addEventListener('click', () => openGoalModal(goal));
         col.querySelector('.delete-goal-btn').addEventListener('click', () => handleDeleteGoal(goal.id));
     }
@@ -99,86 +114,109 @@ function createGoalCard(goal) {
 }
 
 async function openGoalModal(goal = null) {
-    const form = document.getElementById('goal-form');
-    form.reset();
-    document.getElementById('goal-id').value = goal ? goal.id : '';
-    
-    if (goal) {
-        document.getElementById('goal-description').value = goal.description;
-        document.getElementById('goal-type').value = goal.type;
-        document.getElementById('goal-target').value = goal.target;
-        document.getElementById('goal-current').value = goal.current;
-        document.getElementById('goal-period').value = goal.period;
-    }
-
-    const assignUserContainer = document.getElementById('assign-user-container');
-    const userSelect = document.getElementById('goal-user');
-    userSelect.innerHTML = '';
-
-    if (canWriteGoals(currentUserRole)) {
-        assignUserContainer.style.display = 'block';
-        const assignableUsers = await getAssignableUsers(currentUser, currentUserRole);
+    showLoadingIndicator();
+    try {
+        const form = document.getElementById('goal-form');
+        form.reset();
+        document.getElementById('goal-id').value = goal ? goal.id : '';
         
-        if (assignableUsers && assignableUsers.length > 0) {
-            assignableUsers.forEach(user => {
+        if (goal) {
+            document.getElementById('goal-description').value = goal.description;
+            document.getElementById('goal-type').value = goal.type;
+            document.getElementById('goal-target').value = goal.target;
+            document.getElementById('goal-current').value = goal.current;
+            document.getElementById('goal-period').value = goal.period;
+        }
+
+        const assignUserContainer = document.getElementById('assign-user-container');
+        const userSelect = document.getElementById('goal-user');
+        userSelect.innerHTML = '';
+
+        const user = getCurrentUser();
+        if (canWriteGoals(user.role)) {
+            assignUserContainer.style.display = 'block';
+            const assignableUsers = await getAssignableUsers();
+            
+            if (assignableUsers && assignableUsers.length > 0) {
+                assignableUsers.forEach(u => {
+                    const option = document.createElement('option');
+                    option.value = u.uid;
+                    option.textContent = u.nome;
+                    userSelect.appendChild(option);
+                });
+            } else {
+                // If no assignable users, add the current user as the only option
                 const option = document.createElement('option');
                 option.value = user.uid;
-                option.textContent = user.nome;
+                option.textContent = 'Atribuir a mim mesmo';
                 userSelect.appendChild(option);
-            });
+            }
+
+            if (goal && goal.userId) {
+                userSelect.value = goal.userId;
+            }
         } else {
-            // If no assignable users, add the current user as the only option
-            const option = document.createElement('option');
-            option.value = currentUser;
-            option.textContent = 'Atribuir a mim mesmo';
-            userSelect.appendChild(option);
+            assignUserContainer.style.display = 'none';
         }
 
-        if (goal && goal.userId) {
-            userSelect.value = goal.userId;
-        }
-    } else {
-        assignUserContainer.style.display = 'none';
+        goalModal.show();
+    } catch (error) {
+        handleError(error, 'Open Goal Modal');
+    } finally {
+        hideLoadingIndicator();
     }
-
-    goalModal.show();
 }
 
 async function saveGoal() {
-    const goalId = document.getElementById('goal-id').value;
-    const assignedUserId = document.getElementById('goal-user').value || currentUser;
+    showLoadingIndicator();
+    try {
+        const user = getCurrentUser();
+        const goalId = document.getElementById('goal-id').value;
+        const assignedUserId = document.getElementById('goal-user').value || user.uid;
 
-    const goalData = {
-        description: document.getElementById('goal-description').value,
-        type: document.getElementById('goal-type').value,
-        target: parseFloat(document.getElementById('goal-target').value),
-        current: parseFloat(document.getElementById('goal-current').value),
-        period: document.getElementById('goal-period').value,
-        userId: assignedUserId,
-    };
+        const goalData = {
+            description: document.getElementById('goal-description').value,
+            type: document.getElementById('goal-type').value,
+            target: parseFloat(document.getElementById('goal-target').value),
+            current: parseFloat(document.getElementById('goal-current').value),
+            period: document.getElementById('goal-period').value,
+            userId: assignedUserId,
+        };
 
-    const assignedUserData = await getUserData(assignedUserId);
-    if (assignedUserData) {
-        goalData.city = assignedUserData.city || '';
-        goalData.state = assignedUserData.state || '';
-        goalData.region = assignedUserData.region || '';
+        const assignedUserData = await getUser(assignedUserId);
+        if (assignedUserData) {
+            goalData.city = assignedUserData.city || '';
+            goalData.state = assignedUserData.state || '';
+            goalData.region = assignedUserData.region || '';
+        }
+
+        if (goalId) {
+            // Update existing goal
+            await updateGoal(goalId, goalData);
+        } else {
+            // Add new goal
+            await addGoal(goalData);
+        }
+
+        goalModal.hide();
+        await loadGoals();
+    } catch (error) {
+        handleError(error, 'Save Goal');
+    } finally {
+        hideLoadingIndicator();
     }
-
-    if (goalId) {
-        // Update existing goal
-        await updateGoal(goalId, goalData);
-    } else {
-        // Add new goal
-        await addGoal(goalData);
-    }
-
-    goalModal.hide();
-    loadGoals(currentUser, currentUserRole);
 }
 
 async function handleDeleteGoal(goalId) {
-    if (confirm('Tem certeza de que deseja excluir esta meta?')) {
-        await deleteGoal(goalId);
-        loadGoals(currentUser, currentUserRole);
+    showLoadingIndicator();
+    try {
+        if (confirm('Tem certeza de que deseja excluir esta meta?')) {
+            await deleteGoal(goalId);
+            await loadGoals();
+        }
+    } catch (error) {
+        handleError(error, 'Delete Goal');
+    } finally {
+        hideLoadingIndicator();
     }
 }

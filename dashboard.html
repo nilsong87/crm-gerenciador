@@ -240,13 +240,25 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/vfs_fonts.js"></script>
     <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
     <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js"></script>
-    <script src="//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json"></script>
     <!-- Litepicker JS -->
     <script src="https://cdn.jsdelivr.net/npm/litepicker/dist/litepicker.js"></script>
 
     
     <!-- Firebase & App Logic -->
-    <script type="module" src="js/dashboard-auth.js"></script>
+    <script type="module">
+        import { onAuth } from './js/auth-manager.js';
+        import { initializeDashboard } from './js/dashboard.js';
+        import { updateUIVisibility } from './js/ui-visibility.js';
+
+        onAuth((user) => {
+            if (user) {
+                updateUIVisibility(user.role);
+                initializeDashboard(user);
+            } else {
+                window.location.href = 'index.html';
+            }
+        });
+    </script>
     <script type="module" src="js/sidebar.js"></script>
 </body>
 </html>

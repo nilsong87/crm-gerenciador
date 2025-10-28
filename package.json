@@ -5,12 +5,16 @@
   "main": "server.js",
   "scripts": {
     "seed": "node js/seed-database.js",
-    "set-role": "node js/set-role.js"
+    "set-role": "node js/set-role.js",
+    "test": "vitest"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
     "express": "^4.18.2",
     "firebase-admin": "^12.1.1"
-  }  
+  },
+  "devDependencies": {
+    "vitest": "^4.0.4"
+  }
 }

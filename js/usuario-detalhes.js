@@ -1,50 +1,55 @@
 console.log("usuario-detalhes.js script loaded");
 
-import { app } from './firebase-config.js';
-import { getAuth, onAuthStateChanged, getIdTokenResult } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { getUserData, getContractsForUser, getKpisForUser, getChartDataForUser } from './firestore-service.js';
+import { onAuth, getCurrentUser } from './auth-manager.js';
+import { getUser, getContractsForUser, getKpisForUser, getChartDataForUser } from './firestore-service.js';
+import { updateUIVisibility } from './ui-visibility.js';
+import { handleError } from './error-handler.js';
+import { showLoadingIndicator, hideLoadingIndicator } from './loading-indicator.js';
 
 document.addEventListener('DOMContentLoaded', () => {
-    const auth = getAuth(app);
-
-    onAuthStateChanged(auth, (user) => {
+    onAuth((user) => {
         if (user) {
-            getIdTokenResult(user).then((idTokenResult) => {
-                const loggedInUserRole = idTokenResult.claims.role || 'comercial';
-                const urlParams = new URLSearchParams(window.location.search);
-                const selectedUserId = urlParams.get('uid');
+            updateUIVisibility(user.role);
+            const urlParams = new URLSearchParams(window.location.search);
+            const selectedUserId = urlParams.get('uid');
 
-                if (selectedUserId) {
-                    initializeUserDetailsPage(user, loggedInUserRole, selectedUserId);
-                } else {
-                    console.error('No user UID found in URL');
-                }
-            });
+            if (selectedUserId) {
+                initializeUserDetailsPage(selectedUserId);
+            } else {
+                handleError(new Error('No user UID found in URL'), 'User Details Page');
+            }
         } else {
             window.location.href = 'index.html';
         }
     });
 });
 
-async function initializeUserDetailsPage(loggedInUser, loggedInUserRole, selectedUserId) {
-    // 1. Fetch user data
-    const userData = await getUserData(selectedUserId);
-    if (userData) {
-        displayUserInfo(userData);
-    }
+async function initializeUserDetailsPage(selectedUserId) {
+    showLoadingIndicator();
+    try {
+        // 1. Fetch user data
+        const userData = await getUser(selectedUserId);
+        if (userData) {
+            displayUserInfo(userData);
+        }
 
-    // 2. Fetch user's contracts (respecting logged-in user's permissions)
-    const contracts = await getContractsForUser(loggedInUser.uid, loggedInUserRole, selectedUserId);
-    if (contracts) {
-        displayContractsTable(contracts);
+        // 2. Fetch user's contracts (respecting logged-in user's permissions)
+        const contracts = await getContractsForUser(selectedUserId);
+        if (contracts) {
+            displayContractsTable(contracts);
 
-        // 3. Get and display KPIs
-        const kpis = getKpisForUser(contracts);
-        displayKpis(kpis);
+            // 3. Get and display KPIs
+            const kpis = getKpisForUser(contracts);
+            displayKpis(kpis);
 
-        // 4. Get and display charts
-        const chartData = getChartDataForUser(contracts);
-        displayCharts(chartData);
+            // 4. Get and display charts
+            const chartData = getChartDataForUser(contracts);
+            displayCharts(chartData);
+        }
+    } catch (error) {
+        handleError(error, 'Initialize User Details Page');
+    } finally {
+        hideLoadingIndicator();
     }
 }
 
@@ -160,7 +165,7 @@ function displayContractsTable(contracts) {
         ],
         responsive: true,
         language: {
-            url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json',
+            url: 'js/i18n/pt-BR.json',
             emptyTable: "Nenhum contrato encontrado para este usuário."
         }
     });
