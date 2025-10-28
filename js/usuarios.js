@@ -61,15 +61,39 @@ async function loadUsers() {
     showLoadingIndicator();
     try {
         const users = await getUsers();
-        console.log("Dados dos usuários recebidos do Firestore:", users); // Adicione esta linha
         if (!users) return;
 
+        const currentUser = getCurrentUser();
+
+        const canEdit = (targetUser) => {
+            if (!currentUser || !targetUser) return false;
+            const editorRole = currentUser.role;
+
+            if (editorRole === 'diretoria' || editorRole === 'superintendencia') {
+                return true;
+            }
+            if (editorRole === 'gerente_regional' && currentUser.state === targetUser.state) {
+                return true;
+            }
+            if (editorRole === 'comercial' && currentUser.city === targetUser.city) {
+                return true;
+            }
+            if (currentUser.uid === targetUser.uid) {
+                return true;
+            }
+            return false;
+        };
+
         const tableData = users.map(user => {
+            const editButton = canEdit(user)
+                ? `<button class="btn btn-sm btn-primary edit-btn" data-id="${user.uid}">Editar</button>`
+                : '';
+
             return [
                 `<a href="usuario-detalhes.html?uid=${user.uid}">${user.nome || 'Não informado'}</a>`,
                 user.email,
                 user.role || 'N/D',
-                `<button class="btn btn-sm btn-primary edit-btn" data-id="${user.uid}">Editar</button>`
+                editButton
             ];
         });
 
