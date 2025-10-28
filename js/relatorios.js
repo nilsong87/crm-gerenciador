@@ -1,7 +1,9 @@
 import { getContracts, getAllContractsForFiltering } from './firestore-service.js';
-import { getCurrentUser } from './auth-manager.js';
+import { getCurrentUser, enforceRoleAccess } from './auth-manager.js';
 import { handleError } from './error-handler.js';
 import { showLoadingIndicator, hideLoadingIndicator } from './loading-indicator.js';
+
+enforceRoleAccess(['diretoria', 'superintendencia', 'gerencia_regional', 'comercial', 'operacional']);
 
 let datepicker;
 let reportsDataTable;

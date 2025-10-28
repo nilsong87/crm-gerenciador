@@ -1,62 +1,70 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // As regras atuais falham para listagens de coleções (ex: buscar todos os usuários)
-    // porque tentam verificar o conteúdo de um documento (`resource.data`), o que não é
-    // possível em uma consulta de coleção.
-    // As regras abaixo corrigem isso permitindo acesso de leitura mais amplo para
-    // certos papéis, consertando os erros de permissão. A filtragem de dados
-    // específicos (ex: por região) deve ser feita no lado do cliente (no JavaScript).
-
-    // Função para verificar permissão de escrita em metas
-    function canWriteGoals(role, data) {
-      return (role == 'diretoria') ||
-             (role == 'superintendencia') ||
-             (role == 'gerente_regional' && data.state == request.auth.token.state) ||
-             (role == 'comercial' && data.city == request.auth.token.city);
+    // Helper function to get the requesting user's data document from the 'users' collection
+    function getUserData(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
     }
 
-    // Usuários
+    // Helper function to check if a user has an admin-level role
+    function isAdmin() {
+      return request.auth.token.role in ['diretoria', 'superintendencia'];
+    }
+
+    // Rules for the 'users' collection
     match /users/{userId} {
-      // Permite leitura para papéis gerenciais/comerciais e para o próprio usuário.
-      allow read: if request.auth.token.role in ['diretoria', 'superintendencia', 'gerente_regional', 'comercial', 'operacional'] || request.auth.uid == userId;
-      
-      // Permissões de atualização hierárquicas e para o próprio usuário
-      allow update: if request.auth.token.role in ['diretoria', 'superintendencia'] ||
-                      (request.auth.token.role == 'gerente_regional' && resource.data.state == request.auth.token.state) ||
-                      (request.auth.token.role == 'comercial' && resource.data.city == request.auth.token.city) ||
-                      request.auth.uid == userId;
-      
-      // Apenas diretoria/superintendencia podem criar/deletar usuários
-      allow create, delete: if request.auth.token.role in ['diretoria', 'superintendencia'];
+      // Read access is hierarchical
+      allow read: if isAdmin() ||
+                     (request.auth.token.role == 'gerencia_regional' && resource.data.state == getUserData(request.auth.uid).state) ||
+                     (request.auth.token.role == 'comercial' && resource.data.city == getUserData(request.auth.uid).city) ||
+                     request.auth.uid == userId;
+
+      // Update access is hierarchical
+      allow update: if isAdmin() ||
+                       (request.auth.token.role == 'gerencia_regional' && resource.data.state == getUserData(request.auth.uid).state) ||
+                       (request.auth.token.role == 'comercial' && resource.data.city == getUserData(request.auth.uid).city) ||
+                       request.auth.uid == userId;
+
+      // Only top-level admin ('diretoria') can create or delete users
+      allow create, delete: if request.auth.token.role == 'diretoria';
     }
 
-    // Contratos
-    match /contracts/{docId} {
-      // Permite leitura para todos os papéis que precisam acessar contratos
-      allow read: if request.auth.token.role in ['diretoria', 'superintendencia', 'gerente_regional', 'comercial', 'operacional'];
+    // Rules for the 'contracts' collection
+    match /contracts/{contractId} {
+      // Read access is hierarchical
+      allow read: if isAdmin() ||
+                     (request.auth.token.role == 'gerencia_regional' && resource.data.state == getUserData(request.auth.uid).state) ||
+                     (request.auth.token.role == 'comercial' && resource.data.city == getUserData(request.auth.uid).city) ||
+                     (request.auth.token.role == 'operacional' && resource.data.userId == request.auth.uid);
 
-      allow create: if request.auth.token.role in ['diretoria', 'superintendencia', 'gerente_regional', 'comercial', 'operacional'];
+      // Any authenticated user can create a contract
+      allow create: if request.auth != null;
 
-      allow update: if request.auth.token.role in ['diretoria', 'superintendencia'] ||
-                      (request.auth.token.role == 'operacional' && request.resource.data.keys().hasOnly(['validated', 'validation_notes']));
-      
-      allow delete: if request.auth.token.role in ['diretoria', 'superintendencia'];
+      // Admins can update anything. 'operacional' can only update validation fields.
+      allow update: if isAdmin() ||
+                       (request.auth.token.role == 'operacional' && request.resource.data.keys().hasOnly(['validated', 'validation_notes']));
+
+      // Only top-level admin ('diretoria') can delete contracts
+      allow delete: if request.auth.token.role == 'diretoria';
     }
 
-    // Relatórios
-    match /relatorios/{docId} {
-      // Permite leitura para papéis que acessam relatórios
-      allow read: if request.auth.token.role in ['diretoria', 'superintendencia', 'gerente_regional', 'comercial'];
-      allow write: if request.auth.token.role in ['diretoria', 'superintendencia', 'gerente_regional', 'comercial'];
+    // Rules for the 'goals' collection
+    match /goals/{goalId} {
+      // Read access is hierarchical
+      allow read: if isAdmin() ||
+                     (request.auth.token.role == 'gerencia_regional' && resource.data.state == getUserData(request.auth.uid).state) ||
+                     (request.auth.token.role == 'comercial' && resource.data.city == getUserData(request.auth.uid).city) ||
+                     (request.auth.token.role == 'operacional' && resource.data.userId == request.auth.uid);
+
+      // Write access is hierarchical. Assumes the goal doc has state/city fields.
+      allow write: if isAdmin() ||
+                      (request.auth.token.role == 'gerencia_regional' && request.resource.data.state == getUserData(request.auth.uid).state) ||
+                      (request.auth.token.role == 'comercial' && request.resource.data.city == getUserData(request.auth.uid).city);
     }
 
-    // Metas (goals)
-    match /goals/{docId} {
-      // Permite leitura para papéis que visualizam metas
-      allow read: if request.auth.token.role in ['diretoria', 'superintendencia', 'gerente_regional', 'comercial'];
-      allow write: if canWriteGoals(request.auth.token.role, request.resource.data);
-    }
+    // There is no 'relatorios' collection. Reports are generated from other collections.
+    // The rules for 'contracts' will apply when generating reports.
   }
 }

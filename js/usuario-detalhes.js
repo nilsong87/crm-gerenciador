@@ -1,10 +1,12 @@
 console.log("usuario-detalhes.js script loaded");
 
-import { onAuth, getCurrentUser } from './auth-manager.js';
+import { onAuth, getCurrentUser, enforceRoleAccess } from './auth-manager.js';
 import { getUser, getContractsForUser, getKpisForUser, getChartDataForUser } from './firestore-service.js';
 import { updateUIVisibility } from './ui-visibility.js';
 import { handleError } from './error-handler.js';
 import { showLoadingIndicator, hideLoadingIndicator } from './loading-indicator.js';
+
+enforceRoleAccess(['diretoria', 'superintendencia', 'gerencia_regional', 'comercial']);
 
 document.addEventListener('DOMContentLoaded', () => {
     onAuth((user) => {
