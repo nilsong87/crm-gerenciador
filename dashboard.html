@@ -35,11 +35,21 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item dropdown">
+                        <a class="nav-link text-white" href="#" id="notification-bell" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-bell"></i>
+                            <span id="notification-count" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="display: none; border: 2px solid white;"></span>
+                        </a>
+                        <ul id="notification-dropdown" class="dropdown-menu dropdown-menu-end" aria-labelledby="notification-bell">
+                            <!-- Notifications will be loaded here by JS -->
+                            <li><div class="text-center p-2">Nenhuma notificação</div></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle text-white" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="fas fa-user-circle"></i> Perfil
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
-                            <li><a class="dropdown-item" href="#">Minha Conta</a></li>
+                            <li><a class="dropdown-item" href="perfil.html">Minha Conta</a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" id="logout-button" href="#">Sair</a></li>
                         </ul>
@@ -54,26 +64,6 @@
             <nav id="sidebar" class="col-md-3 col-lg-2 d-md-block bg-light sidebar collapse">
                 <div class="position-sticky pt-3">
                     <ul class="nav flex-column">
-                        <li class="nav-item">
-                            <a class="nav-link" href="dashboard.html">
-                                <i class="fas fa-tachometer-alt"></i> Dashboard
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="relatorios.html">
-                                <i class="fas fa-file-alt"></i> Relatórios
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="usuarios.html">
-                                <i class="fas fa-users"></i> Usuários
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="metas.html">
-                                <i class="fas fa-bullseye"></i> Metas
-                            </a>
-                        </li>
                     </ul>
                 </div>
             </nav>
@@ -261,7 +251,7 @@
         import { initializeDashboard } from './js/dashboard.js';
         import { updateUIVisibility } from './js/ui-visibility.js';
 
-        onAuth((user) => {
+        onAuth().then((user) => {
             if (user) {
                 updateUIVisibility(user.role);
                 initializeDashboard(user);
@@ -271,5 +261,6 @@
         });
     </script>
     <script type="module" src="js/sidebar.js"></script>
+    <script type="module" src="js/notifications.js"></script>
 </body>
 </html>

@@ -27,7 +27,11 @@ exports.syncWorkbankData = functions.https.onCall(async (data, context) => {
     try {
         // Substitua pela URL real e método de autenticação da API Workbank
         const API_URL = "https://api.workbank.com/v1/contracts";
-        const API_KEY = "SUA_API_KEY_WORKBANK"; // Idealmente, isso viria de functions.config()
+        const API_KEY = functions.config().workbank.api_key;
+
+        if (!API_KEY) {
+            throw new functions.https.HttpsError('failed-precondition', 'Workbank API key not configured. Set it via firebase functions:config:set workbank.api_key="YOUR_API_KEY"');
+        }
 
         const response = await axios.get(API_URL, {
             headers: { "Authorization": `Bearer ${API_KEY}` }
@@ -63,9 +67,19 @@ exports.syncInternalCrmData = functions.https.onCall(async (data, context) => {
 
     try {
         // Substitua pela URL real e método de autenticação do seu CRM
-        const API_URL = "https://crm-interno.suaempresa.com/api/updates";
+        const API_URL = functions.config().crm.api_url;
+        const API_KEY = functions.config().crm.api_key;
 
-        const response = await axios.get(API_URL);
+        if (!API_URL) {
+            throw new functions.https.HttpsError('failed-precondition', 'CRM API URL not configured. Set it via firebase functions:config:set crm.api_url="YOUR_CRM_API_URL"');
+        }
+        if (!API_KEY) {
+            throw new functions.https.HttpsError('failed-precondition', 'CRM API key not configured. Set it via firebase functions:config:set crm.api_key="YOUR_API_KEY"');
+        }
+
+        const response = await axios.get(API_URL, {
+            headers: { "Authorization": `Bearer ${API_KEY}` }
+        });
         const updates = response.data;
         
         functions.logger.info("Dados do CRM Interno recebidos:", updates);
@@ -155,3 +169,35 @@ exports.createUserDocument = functions.auth.user().onCreate((user) => {
     state: '', // Default empty state
   });
 });
+
+/**
+ * Triggered when a new goal is created.
+ * Creates a notification for the user the goal is assigned to.
+ */
+exports.createGoalNotification = functions.firestore
+    .document('goals/{goalId}')
+    .onCreate(async (snap, context) => {
+        const goalData = snap.data();
+
+        if (!goalData || !goalData.userId) {
+            functions.logger.error('Goal creation trigger error: Missing goal data or userId.', { goalId: context.params.goalId });
+            return null;
+        }
+
+        const notification = {
+            userId: goalData.userId,
+            message: `Nova meta atribuída a você: "${goalData.description}"`,
+            link: 'metas.html',
+            isRead: false,
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        try {
+            await admin.firestore().collection('notifications').add(notification);
+            functions.logger.info(`Notification created for user ${goalData.userId} for goal ${context.params.goalId}`);
+            return null;
+        } catch (error) {
+            functions.logger.error(`Error creating notification for user ${goalData.userId}:`, error);
+            return null;
+        }
+    });

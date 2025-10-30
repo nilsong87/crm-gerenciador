@@ -1,19 +1,20 @@
 import { enforceRoleAccess } from './auth-manager.js';
 const allowedRoles = ['diretoria', 'superintendencia', 'gerencia_regional', 'comercial'];
-enforceRoleAccess(allowedRoles);
 
 import { getUsers } from './firestore-service.js';
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 import { getCurrentUser } from './auth-manager.js';
 import { handleError } from './error-handler.js';
 import { showLoadingIndicator, hideLoadingIndicator } from './loading-indicator.js';
+import { logAction } from './audit-log-service.js';
 
 let usersDataTable;
 let editUserModal;
 
 // Called from usuarios.html after auth state is confirmed
-export function initializeUsersPage() {
+export async function initializeUsersPage() {
     try {
+        await enforceRoleAccess(allowedRoles);
         const user = getCurrentUser();
         console.log("Initializing users page for role:", user.role);
         editUserModal = new bootstrap.Modal(document.getElementById('editUserModal'));
@@ -65,28 +66,25 @@ async function loadUsers() {
 
         const currentUser = getCurrentUser();
 
-        const canEdit = (targetUser) => {
+        const canChangeRole = (targetUser) => {
             if (!currentUser || !targetUser) return false;
             const editorRole = currentUser.role;
 
+            // As per backend rules in `functions/index.js`, only these two roles can successfully change another user's role.
             if (editorRole === 'diretoria' || editorRole === 'superintendencia') {
+                // Prevents an admin from accidentally changing their own role via this UI.
+                if (currentUser.uid === targetUser.uid) {
+                    return false;
+                }
                 return true;
             }
-            if (editorRole === 'gerente_regional' && currentUser.state === targetUser.state) {
-                return true;
-            }
-            if (editorRole === 'comercial' && currentUser.city === targetUser.city) {
-                return true;
-            }
-            if (currentUser.uid === targetUser.uid) {
-                return true;
-            }
+            
             return false;
         };
 
         const tableData = users.map(user => {
-            const editButton = canEdit(user)
-                ? `<button class="btn btn-sm btn-primary edit-btn" data-id="${user.uid}">Editar</button>`
+            const editButton = canChangeRole(user)
+                ? `<button class="btn btn-sm btn-primary edit-btn" data-id="${user.uid}">Editar Perfil</button>`
                 : '';
 
             return [
@@ -132,6 +130,12 @@ async function saveUserRole() {
         const functions = getFunctions();
         const setUserRole = httpsCallable(functions, 'setUserRole');
         await setUserRole({ uid: userId, role: newRole });
+
+        // Log the successful action
+        await logAction('user.role.changed', { 
+            targetUserId: userId, 
+            newRole: newRole 
+        });
 
         alert('Perfil do usuário atualizado com sucesso!');
         editUserModal.hide();

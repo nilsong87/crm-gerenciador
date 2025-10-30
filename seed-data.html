@@ -29,27 +29,32 @@
     </div>
 
     <script type="module">
-        import { app } from './js/firebase-config.js';
-        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { onAuth } from './js/auth-manager.js';
         import { seedUsersDatabase } from './js/seed-users.js';
 
-        const auth = getAuth(app);
         const seedButton = document.getElementById('seed-button');
         seedButton.disabled = true;
 
-        onAuthStateChanged(auth, (user) => {
+        (async () => {
+            const user = await onAuth();
             if (user) {
-                console.log("Usuário autenticado. Botão de seeding habilitado.");
-                seedButton.disabled = false; // Enable button only when logged in
+                const allowedRoles = ['diretoria'];
+                if (!allowedRoles.includes(user.role)) {
+                    alert('Você não tem permissão para acessar esta página de seeding.');
+                    window.location.href = 'dashboard.html';
+                    return;
+                }
+                console.log("Usuário autenticado e autorizado. Botão de seeding habilitado.");
+                seedButton.disabled = false;
             } else {
-                console.log("Usuário não autenticado. Faça login para habilitar o seeding.");
-                alert("Você precisa estar logado para executar o seeding.");
-                seedButton.disabled = true;
+                console.log("Usuário não autenticado. Redirecionando para login.");
+                alert("Você precisa estar logado para acessar esta página.");
+                window.location.href = 'index.html';
             }
-        });
+        })();
 
         seedButton.addEventListener('click', () => {
-            if (confirm('Tem certeza de que deseja adicionar os usuários de exemplo ao banco de dados?')) {
+            if (confirm('Tem certeza de que deseja adicionar os usuários de exemplo ao banco de dados? Isso pode sobrescrever dados existentes.')) {
                 seedUsersDatabase();
             }
         });

@@ -1,17 +1,17 @@
-import { getContracts, getAllContractsForFiltering } from './firestore-service.js';
+import { getContracts, getAllContractsForFiltering, getContract } from './firestore-service.js';
+import { uploadContractFile } from './storage-service.js';
 import { getCurrentUser, enforceRoleAccess } from './auth-manager.js';
 import { handleError } from './error-handler.js';
 import { showLoadingIndicator, hideLoadingIndicator } from './loading-indicator.js';
 
-enforceRoleAccess(['diretoria', 'superintendencia', 'gerencia_regional', 'comercial', 'operacional']);
-
 let datepicker;
+let attachmentsModal;
 let reportsDataTable;
-let contractsData = []; // To store the fetched data for export
+let contractsData = [];
 
-// Called from relatorios.html after auth state is confirmed
-export function initializeReports() {
+export async function initializeReports() {
     try {
+        await enforceRoleAccess(['diretoria', 'superintendencia', 'gerencia_regional', 'comercial', 'operacional']);
         const user = getCurrentUser();
         console.log("Initializing reports for role:", user.role);
 
@@ -22,6 +22,8 @@ export function initializeReports() {
             lang: 'pt-BR'
         });
 
+        attachmentsModal = new bootstrap.Modal(document.getElementById('attachmentsModal'));
+
         populateFilterOptions();
         initializeDataTable();
 
@@ -29,6 +31,17 @@ export function initializeReports() {
         document.getElementById('export-pdf').addEventListener('click', exportPDF);
         document.getElementById('export-excel').addEventListener('click', exportExcel);
         document.getElementById('export-csv').addEventListener('click', exportCSV);
+
+        // Add event listener for attachment upload form
+        document.getElementById('attachment-upload-form').addEventListener('submit', handleAttachmentUpload);
+
+        // Add event listener for attachment buttons
+        $('#reportsTable tbody').on('click', '.attachments-btn', function () {
+            const contractId = $(this).data('contract-id');
+            const contractName = $(this).data('contract-name');
+            openAttachmentsModal(contractId, contractName);
+        });
+
     } catch (error) {
         handleError(error, 'Initialize Reports');
     }
@@ -85,7 +98,8 @@ function initializeDataTable() {
             { title: "Data" },
             { title: "Valor" },
             { title: "Promotora" },
-            { title: "Região" }
+            { title: "Região" },
+            { title: "Anexos", orderable: false, searchable: false }
         ],
         responsive: true,
         language: {
@@ -105,15 +119,19 @@ async function generateReport() {
         
         const tableData = contractsData.map(c => {
             const contractDate = c.date?.toDate ? c.date.toDate().toLocaleDateString('pt-BR') : 'N/A';
+            const attachmentsButton = `<button class="btn btn-sm btn-outline-secondary attachments-btn" data-contract-id="${c.id}" data-contract-name="${c.clientName || 'N/A'}">
+                                            <i class="fas fa-paperclip"></i>
+                                        </button>`;
             return [
                 c.id,
                 c.clientName || 'N/A',
                 c.clientCpf || 'N/A',
                 c.status || 'N/A',
                 contractDate,
-                `R$ ${c.value?.toFixed(2) || '0.00'}`, 
+                `R$ ${c.value?.toFixed(2) || '0.00'}`,
                 c.promotora || 'N/A',
-                c.regiao || 'N/A'
+                c.regiao || 'N/A',
+                attachmentsButton
             ];
         });
 
@@ -122,6 +140,83 @@ async function generateReport() {
         handleError(error, 'Generate Report');
     } finally {
         hideLoadingIndicator();
+    }
+}
+
+async function openAttachmentsModal(contractId, contractName) {
+    showLoadingIndicator();
+    try {
+        document.getElementById('attachmentsModalLabel').textContent = `Anexos do Contrato: ${contractName}`;
+        document.getElementById('attachment-contract-id').value = contractId;
+        
+        const contract = await getContract(contractId);
+        renderAttachmentsList(contract.attachments || []);
+        
+        attachmentsModal.show();
+    } catch (error) {
+        handleError(error, 'Open Attachments Modal');
+    } finally {
+        hideLoadingIndicator();
+    }
+}
+
+function renderAttachmentsList(attachments) {
+    const listElement = document.getElementById('attachments-list');
+    listElement.innerHTML = '';
+
+    if (attachments.length === 0) {
+        listElement.innerHTML = '<li class="list-group-item">Nenhum anexo encontrado.</li>';
+        return;
+    }
+
+    attachments.forEach(file => {
+        const listItem = document.createElement('li');
+        listItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+        
+        const fileName = document.createElement('span');
+        fileName.textContent = file.name;
+        
+        const downloadLink = document.createElement('a');
+        downloadLink.href = file.url;
+        downloadLink.target = '_blank';
+        downloadLink.className = 'btn btn-sm btn-outline-primary';
+        downloadLink.innerHTML = '<i class="fas fa-download"></i> Baixar';
+        
+        listItem.appendChild(fileName);
+        listItem.appendChild(downloadLink);
+        listElement.appendChild(listItem);
+    });
+}
+
+async function handleAttachmentUpload(event) {
+    event.preventDefault();
+    const contractId = document.getElementById('attachment-contract-id').value;
+    const fileInput = document.getElementById('file-input');
+    const file = fileInput.files[0];
+
+    if (!file) {
+        alert('Por favor, selecione um arquivo.');
+        return;
+    }
+
+    const uploadBtn = event.target.querySelector('button[type="submit"]');
+    const spinner = document.getElementById('upload-spinner');
+
+    try {
+        uploadBtn.disabled = true;
+        spinner.style.display = 'inline-block';
+
+        await uploadContractFile(contractId, file);
+        
+        const contract = await getContract(contractId);
+        renderAttachmentsList(contract.attachments || []);
+
+        fileInput.value = '';
+    } catch (error) {
+        handleError(error, 'Handle Attachment Upload');
+    } finally {
+        uploadBtn.disabled = false;
+        spinner.style.display = 'none';
     }
 }
 

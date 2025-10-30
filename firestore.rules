@@ -3,68 +3,103 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper function to get the requesting user's data document from the 'users' collection
-    function getUserData(uid) {
-      return get(/databases/$(database)/documents/users/$(uid)).data;
+    // --- Helper Functions ---
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    // Helper function to check if a user has an admin-level role
-    function isAdmin() {
+    function isDirOrSuper() {
       return request.auth.token.role in ['diretoria', 'superintendencia'];
     }
 
-    // Rules for the 'users' collection
+    // --- Collection Rules ---
+
     match /users/{userId} {
-      // Read access is hierarchical
-      allow read: if isAdmin() ||
-                     (request.auth.token.role == 'gerencia_regional' && resource.data.state == getUserData(request.auth.uid).state) ||
-                     (request.auth.token.role == 'comercial' && resource.data.city == getUserData(request.auth.uid).city) ||
+      // READ: Hierarchical read access. Users can read their own data.
+      allow read: if isDirOrSuper() ||
+                     (request.auth.token.role == 'gerencia_regional' && resource.data.state == getUserData().state) ||
+                     (request.auth.token.role == 'comercial' && resource.data.city == getUserData().city) ||
                      request.auth.uid == userId;
 
-      // Update access is hierarchical
-      allow update: if isAdmin() ||
-                       (request.auth.token.role == 'gerencia_regional' && resource.data.state == getUserData(request.auth.uid).state) ||
-                       (request.auth.token.role == 'comercial' && resource.data.city == getUserData(request.auth.uid).city) ||
-                       request.auth.uid == userId;
+      // UPDATE: Admins can update any user. Users can only update specific, non-critical fields on their OWN profile.
+      allow update: if isDirOrSuper() ||
+                       (request.auth.uid == userId && 
+                        request.resource.data.role == resource.data.role &&
+                        request.resource.data.state == resource.data.state &&
+                        request.resource.data.city == resource.data.city);
 
-      // Only top-level admin ('diretoria') can create or delete users
+      // CREATE/DELETE: Only top-level admins can create/delete users directly. (Creation is normally handled by a Cloud Function).
       allow create, delete: if request.auth.token.role == 'diretoria';
     }
 
-    // Rules for the 'contracts' collection
     match /contracts/{contractId} {
-      // Read access is hierarchical
-      allow read: if isAdmin() ||
-                     (request.auth.token.role == 'gerencia_regional' && resource.data.state == getUserData(request.auth.uid).state) ||
-                     (request.auth.token.role == 'comercial' && resource.data.city == getUserData(request.auth.uid).city) ||
-                     (request.auth.token.role == 'operacional' && resource.data.userId == request.auth.uid);
+      // READ: Hierarchical read access based on role and location. 'operacional' can only read their own.
+      allow read: if isDirOrSuper() ||
+                     (request.auth.token.role == 'gerencia_regional' && resource.data.state == getUserData().state) ||
+                     (request.auth.token.role == 'comercial' && resource.data.city == getUserData().city) ||
+                     (resource.data.userId == request.auth.uid);
 
-      // Any authenticated user can create a contract
-      allow create: if request.auth != null;
+      // CREATE: A user can create a contract, but it must be assigned to them and be within their geographical scope.
+      allow create: if request.resource.data.userId == request.auth.uid &&
+                       (isDirOrSuper() || 
+                        request.resource.data.state == getUserData().state) &&
+                       (isDirOrSuper() || 
+                        request.resource.data.city == getUserData().city);
 
-      // Admins can update anything. 'operacional' can only update validation fields.
-      allow update: if isAdmin() ||
-                       (request.auth.token.role == 'operacional' && request.resource.data.keys().hasOnly(['validated', 'validation_notes']));
+      // UPDATE: Admins can update any contract. The assigned user can update it, but cannot re-assign it.
+      allow update: if isDirOrSuper() ||
+                       (resource.data.userId == request.auth.uid && request.resource.data.userId == resource.data.userId);
 
-      // Only top-level admin ('diretoria') can delete contracts
+      // DELETE: Only top-level admins can delete contracts.
       allow delete: if request.auth.token.role == 'diretoria';
     }
 
-    // Rules for the 'goals' collection
     match /goals/{goalId} {
-      // Read access is hierarchical
-      allow read: if isAdmin() ||
-                     (request.auth.token.role == 'gerencia_regional' && resource.data.state == getUserData(request.auth.uid).state) ||
-                     (request.auth.token.role == 'comercial' && resource.data.city == getUserData(request.auth.uid).city) ||
-                     (request.auth.token.role == 'operacional' && resource.data.userId == request.auth.uid);
+      // READ: Hierarchical read access, same as contracts.
+      allow read: if isDirOrSuper() ||
+                     (request.auth.token.role == 'gerencia_regional' && resource.data.state == getUserData().state) ||
+                     (request.auth.token.role == 'comercial' && resource.data.city == getUserData().city) ||
+                     (resource.data.userId == request.auth.uid);
 
-      // Write access is hierarchical. Assumes the goal doc has state/city fields.
-      allow write: if isAdmin() ||
-                      (request.auth.token.role == 'gerencia_regional' && request.resource.data.state == getUserData(request.auth.uid).state) ||
-                      (request.auth.token.role == 'comercial' && request.resource.data.city == getUserData(request.auth.uid).city);
+      // CREATE: Hierarchical creation. A manager can create a goal for their geographical scope.
+      allow create: if isDirOrSuper() ||
+                       (request.auth.token.role == 'gerencia_regional' && request.resource.data.state == getUserData().state) ||
+                       (request.auth.token.role == 'comercial' && request.resource.data.city == getUserData().city);
+
+      // UPDATE: Admins can update. The assigned user can update progress, but not change the goal's core attributes.
+      allow update: if isDirOrSuper() ||
+                       (resource.data.userId == request.auth.uid &&
+                        request.resource.data.description == resource.data.description &&
+                        request.resource.data.targetValue == resource.data.targetValue &&
+                        request.resource.data.month == resource.data.month);
+                        
+      // DELETE: Only top-level admins can delete goals.
+      allow delete: if request.auth.token.role == 'diretoria';
     }
 
-    // There is no 'relatorios' collection. Reports are generated from other collections.
-    // The rules for 'contracts' will apply when generating reports.
+    // Rules for the 'audit_logs' collection
+    match /audit_logs/{logId} {
+      // READ: Only admins can read the audit logs.
+      allow read: if isDirOrSuper();
+
+      // CREATE: Any authenticated user can create a log entry (as they perform actions).
+      allow create: if request.auth != null;
+
+      // UPDATE, DELETE: Nobody can ever change or delete logs, ensuring integrity.
+      allow update, delete: if false;
+    }
+
+    // Rules for the 'notifications' collection
+    match /notifications/{notificationId} {
+      // A user can only read or delete their own notifications.
+      allow read, delete: if request.auth.uid == resource.data.userId;
+
+      // A user can only update the 'isRead' field on their own notifications.
+      allow update: if request.auth.uid == resource.data.userId &&
+                       request.resource.data.keys().hasOnly(['isRead']);
+
+      // Notifications are only created by the backend (Cloud Functions).
+      allow create: if false;
+    }
   }
 }

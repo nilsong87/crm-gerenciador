@@ -1,5 +1,5 @@
 import { app } from './firebase-config.js';
-import { getFirestore, collection, getDocs, query, where, orderBy, doc, getDoc, addDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, collection, getDocs, query, where, orderBy, doc, getDoc, addDoc, updateDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getCurrentUser } from './auth-manager.js';
 import { handleError } from './error-handler.js';
 
@@ -7,12 +7,14 @@ const db = getFirestore(app);
 
 async function getUser(uid) {
     try {
+        console.log("Attempting to fetch user with UID:", uid);
         const userRef = doc(db, "users", uid);
         const userSnap = await getDoc(userRef);
         if (userSnap.exists()) {
+            console.log("User document found for UID:", uid);
             return userSnap.data();
         } else {
-            console.log("No such user!");
+            console.log("No such user! Document does not exist for UID:", uid);
             return null;
         }
     } catch (error) {
@@ -45,11 +47,11 @@ async function getAllContractsForFiltering() {
 
         console.log(`Fetching all contracts for filter population for role: ${user.role}`);
         let q;
-        if (user.role === 'comercial') {
+        if (user.role === 'comercial' && user.city) {
             q = query(collection(db, 'contracts'), where('city', '==', user.city));
         } else if (user.role === 'operacional') {
             q = query(collection(db, 'contracts'), where('userId', '==', user.uid));
-        } else if (user.role === 'gerencia_regional') {
+        } else if (user.role === 'gerencia_regional' && user.state) {
             q = query(collection(db, 'contracts'), where('state', '==', user.state));
         } else {
             // For other roles like 'diretoria' and 'superintendencia', fetch all.
@@ -79,9 +81,9 @@ async function getContracts(filters = {}) {
         console.log(`Fetching data for user ${user.uid} with role: ${user.role}`);
 
         // Role-based constraints
-        if (user.role === 'comercial') {
+        if (user.role === 'comercial' && user.city) {
             constraints.push(where('city', '==', user.city));
-        } else if (user.role === 'gerencia_regional') {
+        } else if (user.role === 'gerencia_regional' && user.state) {
             constraints.push(where('state', '==', user.state));
         } else if (user.role === 'operacional') {
             constraints.push(where('userId', '==', user.uid));
@@ -149,16 +151,16 @@ async function getKpis(filters = {}) {
         return {
             totalContracts,
             activeContracts,
-            averageTicket: averageTicket.toFixed(2),
-            totalValue: totalValue.toFixed(2)
+            averageTicket: averageTicket,
+            totalValue: totalValue
         };
     } catch (error) {
         handleError(error, 'Get KPIs');
         return {
             totalContracts: 0,
             activeContracts: 0,
-            averageTicket: '0.00',
-            totalValue: '0.00'
+            averageTicket: 0,
+            totalValue: 0
         };
     }
 }
@@ -262,12 +264,11 @@ async function getGoals() {
 
         if (user.role === 'operacional') {
             constraints.push(where('userId', '==', user.uid));
-        } else if (user.role === 'comercial') {
+        } else if (user.role === 'comercial' && user.city) {
             constraints.push(where('city', '==', user.city));
-        } else if (user.role === 'gerencia_regional') {
+        } else if (user.role === 'gerencia_regional' && user.state) {
             constraints.push(where('state', '==', user.state));
         }
-        // For 'diretoria' and 'superintendencia', no constraints are added, so they see all goals.
 
         const q = query(collection(db, 'goals'), ...constraints);
         
@@ -293,9 +294,9 @@ async function getUsers() {
 
         if (user.role === 'diretoria' || user.role === 'superintendencia') {
             q = query(usersCollection);
-        } else if (user.role === 'gerencia_regional') {
+        } else if (user.role === 'gerencia_regional' && user.state) {
             q = query(usersCollection, where('state', '==', user.state));
-        } else if (user.role === 'comercial') {
+        } else if (user.role === 'comercial' && user.city) {
             q = query(usersCollection, where('city', '==', user.city));
         } else {
             // Should not happen based on page access rules, but as a fallback
@@ -322,9 +323,9 @@ async function getContractsForUser(selectedUserId) {
         constraints.push(where('userId', '==', selectedUserId));
 
         // Add role-based constraints for the logged-in user
-        if (user.role === 'comercial') {
+        if (user.role === 'comercial' && user.city) {
             constraints.push(where('city', '==', user.city));
-        } else if (user.role === 'gerencia_regional') {
+        } else if (user.role === 'gerencia_regional' && user.state) {
             constraints.push(where('state', '==', user.state));
         }
         // For 'diretoria' and 'superintendencia', no additional constraints are needed.
@@ -345,8 +346,8 @@ function getKpisForUser(contracts) {
         return {
             totalContracts: 0,
             activeContracts: 0,
-            averageTicket: '0.00',
-            totalValue: '0.00'
+            averageTicket: 0,
+            totalValue: 0
         };
     }
 
@@ -366,8 +367,8 @@ function getKpisForUser(contracts) {
     return {
         totalContracts,
         activeContracts,
-        averageTicket: averageTicket.toFixed(2),
-        totalValue: totalValue.toFixed(2)
+        averageTicket: averageTicket,
+        totalValue: totalValue
     };
 }
 
@@ -448,10 +449,10 @@ async function getAssignableUsers() {
 
         let constraints = [];
 
-        if (user.role === 'comercial') {
+        if (user.role === 'comercial' && user.city) {
             constraints.push(where('role', '==', 'operacional'));
             constraints.push(where('city', '==', user.city));
-        } else if (user.role === 'gerencia_regional') {
+        } else if (user.role === 'gerencia_regional' && user.state) {
             constraints.push(where('role', '==', 'comercial'));
             constraints.push(where('state', '==', user.state));
         } else if (user.role === 'superintendencia') {
@@ -477,4 +478,67 @@ async function getAssignableUsers() {
     }
 }
 
-export { db, getContracts, getKpis, getChartData, getAllContractsForFiltering, getPromoterRanking, getGoals, getUsers, getUser, updateUserName, getContractsForUser, getKpisForUser, getChartDataForUser, addGoal, updateGoal, deleteGoal, getAssignableUsers };
+async function getAuditLogs() {
+    try {
+        // The security rules will enforce that only admins can read this collection.
+        const logsCollection = collection(db, 'audit_logs');
+        const q = query(logsCollection, orderBy('timestamp', 'desc'));
+        
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (error) {
+        handleError(error, 'Get Audit Logs');
+        return []; // Return an empty array on error
+    }
+}
+
+function getNotifications(userId, callback) {
+    try {
+        const notificationsCollection = collection(db, 'notifications');
+        const q = query(
+            notificationsCollection, 
+            where('userId', '==', userId), 
+            orderBy('timestamp', 'desc')
+        );
+
+        // Use onSnapshot for real-time updates
+        return onSnapshot(q, (snapshot) => {
+            const notifications = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            callback(notifications);
+        }, (error) => {
+            handleError(error, 'Get Notifications Snapshot');
+        });
+    } catch (error) {
+        handleError(error, 'Get Notifications');
+        return () => {}; // Return an empty unsubscribe function on initial error
+    }
+}
+
+async function markNotificationAsRead(notificationId) {
+    try {
+        const notificationRef = doc(db, 'notifications', notificationId);
+        return await updateDoc(notificationRef, {
+            isRead: true
+        });
+    } catch (error) {
+        handleError(error, 'Mark Notification As Read');
+    }
+}
+
+async function getContract(contractId) {
+    try {
+        const contractRef = doc(db, "contracts", contractId);
+        const contractSnap = await getDoc(contractRef);
+        if (contractSnap.exists()) {
+            return { id: contractSnap.id, ...contractSnap.data() };
+        } else {
+            console.log("No such contract!");
+            return null;
+        }
+    } catch (error) {
+        handleError(error, 'Get Contract');
+        return null;
+    }
+}
+
+export { db, getContracts, getKpis, getChartData, getAllContractsForFiltering, getPromoterRanking, getGoals, getUsers, getUser, updateUserName, getContractsForUser, getKpisForUser, getChartDataForUser, addGoal, updateGoal, deleteGoal, getAssignableUsers, getAuditLogs, getNotifications, markNotificationAsRead, getContract };

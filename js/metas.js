@@ -2,15 +2,14 @@ import { getGoals, addGoal, updateGoal, deleteGoal, getUser, getAssignableUsers 
 import { getCurrentUser, enforceRoleAccess } from './auth-manager.js';
 import { handleError } from './error-handler.js';
 import { showLoadingIndicator, hideLoadingIndicator } from './loading-indicator.js';
-
-enforceRoleAccess(['diretoria', 'superintendencia', 'gerencia_regional', 'comercial', 'operacional']);
+import { logAction } from './audit-log-service.js';
 
 let goalModal;
 
-// Called from metas.html after auth state is confirmed
 export async function initializeMetas() {
     showLoadingIndicator();
     try {
+        await enforceRoleAccess(['diretoria', 'superintendencia', 'gerencia_regional', 'comercial', 'operacional']);
         const user = getCurrentUser();
         console.log("Initializing metas for role:", user.role);
         goalModal = new bootstrap.Modal(document.getElementById('goalModal'));
@@ -195,9 +194,11 @@ async function saveGoal() {
         if (goalId) {
             // Update existing goal
             await updateGoal(goalId, goalData);
+            await logAction('goal.updated', { goalId, ...goalData });
         } else {
             // Add new goal
-            await addGoal(goalData);
+            const newGoalId = await addGoal(goalData);
+            await logAction('goal.created', { goalId: newGoalId, ...goalData });
         }
 
         goalModal.hide();
@@ -214,6 +215,7 @@ async function handleDeleteGoal(goalId) {
     try {
         if (confirm('Tem certeza de que deseja excluir esta meta?')) {
             await deleteGoal(goalId);
+            await logAction('goal.deleted', { goalId });
             await loadGoals();
         }
     } catch (error) {

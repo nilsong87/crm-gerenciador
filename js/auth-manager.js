@@ -6,74 +6,72 @@ import { handleError } from './error-handler.js';
 const auth = getAuth(app);
 
 // Tenta obter o usuário do sessionStorage primeiro para um carregamento mais rápido
-let currentUser = JSON.parse(sessionStorage.getItem('currentUser'));
+let currentUser = JSON.parse(sessionStorage.getItem('currentUser')) || null;
+let authPromise = null; // To hold the promise that resolves when auth is ready
 
 onAuthStateChanged(auth, async (user) => {
-    try {
-        if (user) {
-            // Se o usuário estiver autenticado, mas não tivermos seus dados (primeiro carregamento), busque-os
-            if (!currentUser || currentUser.uid !== user.uid) {
-                const idTokenResult = await getIdTokenResult(user);
-                const role = idTokenResult.claims.role || 'comercial';
-                const userData = await getUser(user.uid);
-                
-                currentUser = {
-                    uid: user.uid,
-                    email: user.email,
-                    role: role,
-                    ...userData
-                };
+    // This block will run whenever the auth state changes (login, logout, initial load)
+    if (user) {
+        // User is logged in. Fetch their custom claims and Firestore data.
+        try {
+            const idTokenResult = await user.getIdTokenResult(true); // Force refresh token to get latest claims
+            const role = idTokenResult.claims.role || 'comercial';
+            const userData = await getUser(user.uid); // Fetch user data from Firestore
 
-                // Armazena os dados do usuário no sessionStorage
-                sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
-            }
-        } else {
-            // O usuário está deslogado
+            currentUser = {
+                uid: user.uid,
+                email: user.email,
+                role: role,
+                ...userData
+            };
+            sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
+        } catch (error) {
+            handleError(error, 'Failed to load user data after auth state change');
             currentUser = null;
-            // Limpa os dados do usuário do sessionStorage
             sessionStorage.removeItem('currentUser');
-            
-            // Se estiver em uma página protegida, redireciona para o login
-            if (!window.location.pathname.endsWith('index.html')) {
-                window.location.href = 'index.html';
-            }
         }
-        
-        // Este callback é crucial para que as páginas reajam assim que a autenticação for confirmada
-        if (authReadyCallback) {
-            authReadyCallback(currentUser);
-        }
-    } catch (error) {
-        handleError(error, 'Authentication state change');
-        // Limpa dados em cache potencialmente corrompidos
-        sessionStorage.removeItem('currentUser');
+    } else {
+        // User is logged out
         currentUser = null;
-        if (authReadyCallback) {
-            authReadyCallback(null);
+        sessionStorage.removeItem('currentUser');
+        if (!window.location.pathname.endsWith('index.html')) {
+            window.location.href = 'index.html';
         }
+    }
+
+    // Resolve any pending authPromise
+    if (authPromise) {
+        authPromise.resolve(currentUser);
+        authPromise = null; // Clear the promise
     }
 });
 
-let authReadyCallback = null;
-
-export function onAuth(callback) {
-    // Se o usuário já estiver disponível (do cache ou da verificação de auth), chama o callback imediatamente
-    if (currentUser) {
-        return callback(currentUser);
-    } 
-    // Caso contrário, enfileira o callback para ser chamado quando o estado de autenticação for resolvido
-    else {
-        authReadyCallback = callback;
+export function onAuth() {
+    // If authPromise already exists, return its promise
+    if (authPromise) {
+        return authPromise.promise;
     }
+
+    // If currentUser is already set (from sessionStorage or a previous auth state change),
+    // resolve immediately with it.
+    if (currentUser !== null) {
+        return Promise.resolve(currentUser);
+    }
+
+    // If neither of the above, create a new authPromise and return it.
+    // The onAuthStateChanged listener will resolve this promise once auth state is determined.
+    authPromise = {};
+    authPromise.promise = new Promise(resolve => {
+        authPromise.resolve = resolve;
+    });
+    return authPromise.promise;
 }
 
 export function getCurrentUser() {
-    // Retorna da memória, que foi preenchida pelo cache ou pela mudança de autenticação
     return currentUser;
 }
 
 export function logout() {
-    // O listener onAuthStateChanged cuidará da limpeza do sessionStorage e do redirecionamento
     return signOut(auth);
 }
 
@@ -81,14 +79,13 @@ export function logout() {
  * Impõe o acesso baseado em perfil a uma página.
  * @param {string[]} allowedRoles - Um array de perfis que têm permissão para acessar a página.
  */
-export function enforceRoleAccess(allowedRoles) {
-    onAuth(user => {
-        if (user && !allowedRoles.includes(user.role)) {
-            console.error(`Acesso Negado: Usuário com perfil '${user.role}' tentou acessar uma página restrita.`);
-            alert('Você não tem permissão para acessar esta página.');
-            window.location.href = 'dashboard.html';
-        }
-    });
+export async function enforceRoleAccess(allowedRoles) {
+    const user = await onAuth(); // Await the fully resolved user object
+    if (user && !allowedRoles.includes(user.role)) {
+        console.error(`Acesso Negado: Usuário com perfil '${user.role}' tentou acessar uma página restrita.`);
+        alert('Você não tem permissão para acessar esta página.');
+        window.location.href = 'dashboard.html';
+    }
 }
 
 /**
